@@ -1,0 +1,115 @@
+{
+    "additional_files": [],
+    "aws": {
+        "s3_access_key": "",
+        "s3_bucket_name": "",
+        "s3_secret_key": "",
+        "upload": false
+    },
+    "azure": {
+        "account_key": "",
+        "account_name": "",
+        "container_name": "",
+        "upload": false
+    },
+    "collaboration_server": {
+        "backup": false,
+        "bin_path": "",
+        "db_type": "",
+        "password": "",
+        "username": ""
+    },
+    "dsns": {
+        "additional_dsns": [],
+        "history_list": {
+            "backup": false,
+            "bin_path": "",
+            "db_type": "",
+            "dsn_name": "",
+            "password": "",
+            "username": ""
+        },
+        "metadata": {
+            "bin_path": "/usr/bin/",
+            "db_type": "MySQL",
+            "dsn_name": "METADATA",
+            "password": "",
+            "prefix": "",
+            "username": ""
+        },
+        "platform_analytics": {
+            "backup": false,
+            "bin_path": "",
+            "db_type": "",
+            "dsn_name": "",
+            "password": "",
+            "username": ""
+        }
+    },
+    "library": {
+        "backup_contents": {
+            "backup_configuration_files": {
+                "configOverride.properties": false,
+                "mapConfig.xml": false
+            },
+            "backup_images": false,
+            "backup_plugins": false
+        },
+        "path": ""
+    },
+    "mobile": {
+        "backup_contents": {
+            "backup_configuration_files": {
+                "WEB-INF/xml/mobile": false,
+                "mapConfig.xml": false
+            },
+            "backup_images": false,
+            "backup_plugins": false
+        },
+        "path": ""
+    },
+    "mstr": {
+        "cache_path": "",
+        "configuration_locked": false,
+        "cube_path": "",
+        "driver_paths": {
+            "mysql": "/opt/apache/tomcat/latest/lib/mysql-connector-java-5.1.22-bin.jar"
+        },
+        "history_list_storage": "",
+        "hostnames": [],
+        "inbox_path": "",
+        "install_path": "/opt/mstr/MicroStrategy",
+        "mstr_version": "",
+        "password": "",
+        "project_source_name": "",
+        "projects": {
+            "main_project": "Performance Analytics",
+            "projects_locked": [],
+            "projects_to_register": [
+                "Enterprise Manager",
+                "Performance Analytics"
+            ],
+            "projects_to_unregister": []
+        },
+        "scheduler_on": true,
+        "server_definition": "",
+        "username": "",
+        "wsrm_path": ""
+    },
+    "mstrbak": {
+        "backup_path": "",
+        "mstrbak_version": 1.1,
+        "response_file_path": "/tmp/backup_mstr_response.json"
+    },
+    "web": {
+        "backup_contents": {
+            "backup_configuration_files": {
+                "mapConfig.xml": false,
+                "sys_defaults.properties": false
+            },
+            "backup_images": false,
+            "backup_plugins": false
+        },
+        "path": ""
+    }
+}

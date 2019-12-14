@@ -1,0 +1,343 @@
+{
+    "Comment": "Workflow for onboarding clients on a MSTR stack and Redshift instance",
+    "StartAt": "New Client or Stack Rotation?",
+    "States": {
+        "New Client or Stack Rotation?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.isNewClient",
+                    "StringEquals": "true",
+                    "Next": "Create Environment or Use Existing?"
+                }
+            ],
+            "Default": "Create Backup"
+        },
+        "Create Environment or Use Existing?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.isNewEnvironment",
+                    "StringEquals": "true",
+                    "Next": "Create Environment (w/ existing backup)"
+                }
+            ],
+            "Default": "Onboard Client (on existing stack)"
+        },
+        "Create Environment (w/ existing backup)": {
+            "Comment": "Execute MSTR environment create workflow",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${MSTR_ENVIRONMENT_CREATE_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "backupUrl.$": "$.backupUrl",
+                    "environmentName.$": "$.environmentName",
+                    "environmentType.$": "$.environmentType",
+                    "platformInstanceType.$": "$.platformInstanceType",
+                    "rdsInstanceType.$": "$.rdsInstanceType",
+                    "appElbPath.$": "$.appElbPath",
+                    "mstrVersion.$": "$.mstrVersion"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.environmentWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Run OPA Release (full)"
+        },
+        "Run OPA Release (full)": {
+            "Comment": "Execute OPA release workflow, except DeployRW because it cannot succeed until onboarding",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${OPA_RELEASE_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "envId.$": "$.results.environmentWorkflow.Output",
+                    "releaseId.$": "$.releaseId",
+                    "runPostInstall.$": "$.runPostInstall",
+                    "deployRW": "false",
+                    "deployWAR.$": "$.deployWAR",
+                    "deployMSTR.$": "$.deployMSTR"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.releaseWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Onboard Client (on new stack)"
+        },
+        "Onboard Client (on new stack)": {
+            "Comment": "Execute client onboarding workflow",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${CLIENT_ONBOARDING_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "clientId.$": "$.clientId",
+                    "clientName.$": "$.clientName",
+                    "clientHasEGR.$": "$.clientHasEGR",
+                    "clientHasCubes.$": "$.clientHasCubes",
+                    "envId.$": "$.results.environmentWorkflow.Output",
+                    "redshiftId.$": "$.redshiftId",
+                    "environmentName.$": "$.environmentName",
+                    "appElbPath.$": "$.appElbPath"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.onboardingWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Output Environment Id #1"
+        },
+        "Output Environment Id #1": {
+            "Comment": "Upon workflow completion, output the env_id for the newly created stack",
+            "Type": "Pass",
+            "InputPath": "$",
+            "OutputPath": "$.results.environmentWorkflow.Output",
+            "Next": "Notify Success"
+        },
+        "Onboard Client (on existing stack)": {
+            "Comment": "Execute client onboarding workflow",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${CLIENT_ONBOARDING_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "clientId.$": "$.clientId",
+                    "clientName.$": "$.clientName",
+                    "clientHasEGR.$": "$.clientHasEGR",
+                    "clientHasCubes.$": "$.clientHasCubes",
+                    "envId.$": "$.envId",
+                    "redshiftId.$": "$.redshiftId",
+                    "environmentName.$": "$.environmentName",
+                    "appElbPath.$": "$.appElbPath"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.onboardingWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Output Environment Id #2"
+        },
+        "Output Environment Id #2": {
+            "Comment": "Pass the input env id to output for consistency with the other client management use cases where a new stack is created",
+            "Type": "Pass",
+            "InputPath": "$",
+            "OutputPath": "$.envId",
+            "Next": "Notify Success"
+        },
+        "Create Backup": {
+            "Comment": "Execute MSTR backup workflow",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${MSTR_BACKUP_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "clientId.$": "$.backupClientId",
+                    "dumpMode.$": "$.backupDumpMode"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.backupWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Create Environment (w/ new backup)"
+        },
+        "Create Environment (w/ new backup)": {
+            "Comment": "Execute MSTR environment create workflow",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${MSTR_ENVIRONMENT_CREATE_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "backupUrl.$": "$.results.backupWorkflow.Output",
+                    "environmentName.$": "$.environmentName",
+                    "environmentType.$": "$.environmentType",
+                    "platformInstanceType.$": "$.platformInstanceType",
+                    "rdsInstanceType.$": "$.rdsInstanceType",
+                    "appElbPath.$": "$.appElbPath",
+                    "mstrVersion.$": "$.mstrVersion"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.environmentWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Run OPA Release (limited)"
+        },
+        "Run OPA Release (limited)": {
+            "Comment": "Execute certain steps of the OPA release workflow",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${OPA_RELEASE_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "envId.$": "$.results.environmentWorkflow.Output",
+                    "releaseId.$": "$.releaseId",
+                    "runPostInstall.$": "$.runPostInstall",
+                    "deployRW": "false",
+                    "deployWAR.$": "$.deployWAR",
+                    "deployMSTR": "false"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.releaseWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Perform Stack Rotation"
+        },
+        "Perform Stack Rotation": {
+            "Comment": "Execute stack rotation workflow",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "StateMachineArn": "${CLIENT_STACK_ROTATION_SFN_ARN}",
+                "Input": {
+                    "NeedCallback": false,
+                    "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                    "oldEnvId.$": "$.oldEnvId",
+                    "envId.$": "$.results.environmentWorkflow.Output",
+                    "redshiftId.$": "$.redshiftId",
+                    "environmentName.$": "$.environmentName",
+                    "appElbPath.$": "$.appElbPath"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.rotationWorkflow",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Output Environment Id #3"
+        },
+        "Output Environment Id #3": {
+            "Comment": "Upon workflow completion, output the env_id for the newly created stack",
+            "Type": "Pass",
+            "InputPath": "$",
+            "OutputPath": "$.results.environmentWorkflow.Output",
+            "Next": "Notify Success"
+        },
+        "Notify Failure": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sns:publish",
+            "Parameters": {
+                "TopicArn": "${NOTIFICATION_SNS_TOPIC}",
+                "Subject": "FAILURE: ${ENV_PREFIX}-client-management-sfn",
+                "Message": {
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "StateMachineId.$": "$$.StateMachine.Id",
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "ExecutionId.$": "$$.Execution.Id",
+                    "ExecutionInput.$": "$$.Execution.Input"
+                },
+                "MessageAttributes": {
+                    "ExecutionStatus": {
+                        "DataType": "String",
+                        "StringValue": "failure"
+                    }
+                }
+            },
+            "InputPath": "$",
+            "OutputPath": "$",
+            "ResultPath": null,
+            "Next": "Workflow Failed"
+        },
+        "Workflow Failed": {
+            "Type": "Fail",
+            "Cause": "Workflow failed",
+            "Error": "See execution logs"
+        },
+        "Notify Success": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sns:publish",
+            "Parameters": {
+                "TopicArn": "${NOTIFICATION_SNS_TOPIC}",
+                "Subject": "SUCCESS: ${ENV_PREFIX}-client-management-sfn",
+                "Message": {
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "StateMachineId.$": "$$.StateMachine.Id",
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "ExecutionId.$": "$$.Execution.Id",
+                    "ExecutionInput.$": "$$.Execution.Input"
+                },
+                "MessageAttributes": {
+                    "ExecutionStatus": {
+                        "DataType": "String",
+                        "StringValue": "success"
+                    }
+                }
+            },
+            "InputPath": "$",
+            "OutputPath": "$",
+            "ResultPath": null,
+            "Next": "Workflow Succeeded"
+        },
+        "Workflow Succeeded": {
+            "Type": "Pass",
+            "InputPath": "$",
+            "OutputPath": "$",
+            "End": true
+        }
+    }
+}

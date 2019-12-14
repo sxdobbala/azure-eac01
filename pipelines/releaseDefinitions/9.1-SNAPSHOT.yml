@@ -1,0 +1,6 @@
+webVersion: 9.1-SNAPSHOT
+etlVersion: 9.1-SNAPSHOT
+mstrContent: release-9.1
+mstrInfraVersion: master
+isSnapshot: true
+releaseName: release-9.1-SNAPSHOT_${timestamp}

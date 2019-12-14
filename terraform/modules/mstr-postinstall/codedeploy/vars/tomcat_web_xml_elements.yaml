@@ -1,0 +1,29 @@
+---
+tomcat_web_xml_path: /opt/apache/tomcat/latest/conf/web.xml
+
+tomcat_filter_element:
+  - filter:
+      _:
+        - filter-name: "httpHeaderSecurity"
+        - filter-class: "org.apache.catalina.filters.HttpHeaderSecurityFilter"
+        - init-param:
+            _:
+              - param-name: "hstsEnabled"
+              - param-value: "true"
+        - init-param:
+            _:
+              - param-name: "hstsMaxAgeSeconds"
+              - param-value: "31536000"
+        - init-param:
+            _:
+              - param-name: "hstsIncludeSubDomains"
+              - param-value: "true"
+        - async-supported: "true"
+
+tomcat_filter_mapping_element:
+  - filter-mapping:
+      _:
+        - filter-name: "httpHeaderSecurity"
+        - url-pattern: "/*"
+        - url-pattern: "*"
+        - dispatcher: "REQUEST"

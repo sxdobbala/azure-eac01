@@ -1,0 +1,5 @@
+env_prefix: 'qa'
+elb_hostname: 'qacloud.performanceanalytics.optum.com'
+web:
+  okta_esm_settings:
+    com.optum.mstrweb.sso.okta.esm.environmentkey: '37b473ae-b5a5-4839-91d5-80676a86b4b9'

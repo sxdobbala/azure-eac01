@@ -1,0 +1,136 @@
+{
+    "Comment": "Workflow for deployment of an OPA release on a single environment.",
+    "StartAt": "Copy Release Artifacts",
+    "States": {
+        "Copy Release Artifacts": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${SYNC_RELEASE_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "envId.$": "$.envId",
+                    "releaseId.$": "$.releaseId"
+                }
+            },
+            "ResultPath": null,
+            "OutputPath": "$",
+            "Next": "Run MSTR Post-Install?"
+        },
+        "Run MSTR Post-Install?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.runPostInstall",
+                    "StringEquals": "true",
+                    "Next": "Run MSTR Post-Install"
+                }
+            ],
+            "Default": "Deploy RW Schema?"
+        },
+        "Run MSTR Post-Install": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${MSTR_POSTINSTALL_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "envId.$": "$.envId"
+                }
+            },
+            "ResultPath": null,
+            "OutputPath": "$",
+            "Next": "Deploy RW Schema?"
+        },
+        "Deploy RW Schema?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.deployRW",
+                    "StringEquals": "true",
+                    "Next": "Deploy RW Schema"
+                }
+            ],
+            "Default": "Deploy MSTR WAR?"
+        },
+        "Deploy RW Schema": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${DEPLOY_RW_SCHEMA_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "envId.$": "$.envId"
+                }
+            },
+            "ResultPath": null,
+            "OutputPath": "$",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "ClientNotFoundError"
+                    ],
+                    "ResultPath": "$.results.deployRW",
+                    "Next": "Deploy MSTR WAR?"
+                }
+            ],
+            "Next": "Deploy MSTR WAR?"
+        },
+        "Deploy MSTR WAR?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.deployWAR",
+                    "StringEquals": "true",
+                    "Next": "Deploy MSTR WAR"
+                }
+            ],
+            "Default": "Deploy MSTR?"
+        },
+        "Deploy MSTR WAR": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${DEPLOY_OPA_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "envId.$": "$.envId",
+                    "releaseId.$": "$.releaseId"
+                }
+            },
+            "ResultPath": null,
+            "OutputPath": "$",
+            "Next": "Deploy MSTR?"
+        },
+        "Deploy MSTR?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.deployMSTR",
+                    "StringEquals": "true",
+                    "Next": "Deploy MSTR"
+                }
+            ],
+            "Default": "Workflow Succeeded"
+        },
+        "Deploy MSTR": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${DEPLOY_MSTR_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "envId.$": "$.envId",
+                    "releaseId.$": "$.releaseId"
+                }
+            },
+            "ResultPath": "$.results.deployMSTR",
+            "OutputPath": "$",
+            "Next": "Workflow Succeeded"
+        },
+        "Workflow Succeeded": {
+            "Type": "Pass",
+            "End": true
+        }
+    }
+}

@@ -1,0 +1,85 @@
+#!/usr/bin/env groovy
+
+@Library(["com.optum.opa.jenkins"]) _
+import com.optum.jenkins.pipeline.library.scm.Git;
+import com.optum.opa.jenkins.FormatString;
+import groovy.transform.Field
+
+pipeline {
+  options {
+      disableConcurrentBuilds()
+      ansiColor('xterm')
+    }
+    parameters{
+      string(
+        defaultValue: '10.0-SNAPSHOT.yml',
+        name: 'releaseDefinitionFile',
+        description: 'Determines which release definition to build on the schedule'
+        )
+
+      string(
+        defaultValue: 'NightlyBuild',
+        name: 'buildOutputFolder',
+        description: 'Name of the S3 build output folder'
+        )
+
+      string(
+        defaultValue: '',
+        name: 'buildEnvironment',
+        description: 'Name of the build environment (dev, qa, etc.)'
+        )
+      string(
+        defaultValue: '',
+        name: 'env_id',
+        description: 'Name of the deployment environment'
+        )
+    }
+    agent
+    {
+        node {
+            label 'docker-maven-slave'
+        }
+    }
+    stages {
+        stage('Triggering build job') {
+            steps {
+              script{
+                def branch_name = env.GIT_BRANCH; //e.g. origin/preprod
+                env.LOCAL_BRANCH = branch_name.substring(7) //strips origin/
+                // Run the build on the same branch where this pipeline is being run
+                build job: "Build OPA Release (EAC)/${env.LOCAL_BRANCH}",
+                      parameters: [
+                      booleanParam(name: 'useReleaseDefinitionFile', value: true),
+                      string(name: 'releaseDefinitionFile', value: params.releaseDefinitionFile),
+                      string(name: 'e2eReleaseS3DirName', value: params.buildOutputFolder)
+                      ]
+                }
+            }
+        }
+        stage('Deployment') {
+          when {
+            allOf
+            {
+              expression { params.env_id }
+              expression { params.buildEnvironment }
+            }
+          }
+          steps {
+            script{
+              // Run the build on the same branch where this pipeline is being run
+              build job: "Deploy OPA Release (EAC)/${env.LOCAL_BRANCH}",
+                    parameters: [
+                    string(name: 'env_name', value: 'Manual'),
+                    string(name: 'env_id', value: params.env_id),
+                    string(name: 'buildEnvironment', value: params.buildEnvironment),
+                    string(name: 'releaseS3Directory', value: params.buildOutputFolder),
+                    booleanParam(name: 'deployWAR', value: true),
+                    booleanParam(name: 'deployRWSchema', value: true),
+                    booleanParam(name: 'deployMSTR', value: true),
+                    booleanParam(name: 'waitForStepFunctionToComplete', value: true)
+                    ]
+              }
+          }
+        }
+    }
+}

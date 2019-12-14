@@ -1,0 +1,267 @@
+#!/usr/bin/env groovy
+
+@Library(["com.optum.opa.jenkins"]) _
+import com.optum.jenkins.pipeline.library.scm.Git
+import com.optum.opa.jenkins.FormatString
+import com.optum.opa.jenkins.Utils
+import groovy.transform.Field
+import groovy.json.JsonBuilder
+
+@Field
+def clientConfig = [:]
+
+@Field
+boolean is_prod = false
+
+@Field
+String stepFunctionUrl = ''
+
+pipeline {
+    options
+    {
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '2'))
+    }
+    environment {
+        PYTHON_VERSION = "3.6"
+        AWS_REGION = "us-east-1"
+        FLOW_NAME='opa-all'
+        FLOWDOCK_TOKEN = 'FLOWDOCK_API_TOKEN'
+        NONPROD_ACCOUNT = '760182235631'
+        PROD_ACCOUNT = '029620356096'
+        S3_ARTIFACT_BUCKET = "${NONPROD_ACCOUNT}-opa-artifacts-opa"
+        NONPROD_AWS_CREDENTIAL_ID = "AWS_OPA_NONPROD_SERVICE_ACCOUNT"
+        PROD_AWS_CREDENTIAL_ID = "AWS_OPA_PROD_SERVICE_ACCOUNT"
+    }
+
+    parameters
+    {
+        string(
+            name: 'clientId',
+            defaultValue: '',
+            description: 'The client Hnumber (REQUIRED)'
+        )
+
+        string(
+            name: 'clientShortName',
+            defaultValue: '',
+            description: 'The short name of the client (REQUIRED)'
+        )
+
+        string(
+          name: 'clientBackupUrl',
+          defaultValue: 'https://760182235631-opa-artifacts-opa.s3.amazonaws.com/env-145229laio1use1-2019-11-07-13_36_55.867207.tar.gz',
+          description: 'The URL for the MSTR backup to restore to the MSTR stack'
+          )
+        string(
+            name: 'environmentName',
+            defaultValue: '',
+            description: 'The name of the environment'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'isNewEnvironment',
+          description: 'Whether the environment is new'
+        )
+
+        string(
+          name: 'env_id',
+          defaultValue: '',
+          description: 'If isNewEnvironment=false, then this should reference the existing environment'
+        )
+
+        string(
+            name: 'appElbPath',
+            defaultValue: '',
+            description: 'The ELB suffix path used to route to the MSTR environment from OneLogin, i.e. pXX',
+        )
+
+        string(
+          name: 'redshiftId',
+          defaultValue: ''
+        )
+
+        string(
+            name: 'releaseS3Directory',
+            defaultValue: '',
+            description: 'S3 folder that contains the E2E release that will be deployed to the client MSTR stack (REQUIRED)'
+        )
+
+        choice(
+            name: 'buildEnvironment',
+            choices: ['dev', 'qa', 'stage', 'prod', 'ci', 'dev-nina', 'dev-momchil'],
+            description: 'Build environment'
+        )
+
+        choice(
+            name: 'mstrEnvironmentType',
+            choices: ['Enterprise', 'Team'],
+            description: 'The topology of MicroStrategy environment'
+        )
+
+        choice(
+            name: 'mstrVersion',
+            choices: ['10.11 Critical Update 1', '2020'],
+            description: 'The version of MicroStrategy'
+        )
+
+        choice(
+          name: 'platformInstanceType',
+          choices: ['r4.large', 'r4.xlarge', 'r4.2xlarge', 'r4.4xlarge', 'r4.8xlarge', 'r4.16xlarge'],
+          description: 'The EC2 instance size for the MicroStrategy machines'
+        )
+
+        choice(
+          name: 'rdsInstanceType',
+          choices: ['db.r4.large', 'db.t3.large'],
+          description: 'The RDS instance type for MSTR metadata. Typically db.r4.large in production'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'isEGR',
+          description: 'Whether the client is an EGR client'
+        )
+
+    }
+    agent
+    {
+        node {
+            label 'docker-maven-slave'
+        }
+    }
+    stages
+    {
+        stage('Generate Client JSON')
+        {
+          steps{
+            script {
+              if (!params.clientId || !params.clientShortName || !params.appElbPath || !params.environmentName)
+              {
+                error("clientId, clientShortName, environmentName, and appElbPath are REQUIRED parameters")
+              }
+              is_prod = params.buildEnvironment in ["stage", "prod"]
+              def account = is_prod ? PROD_ACCOUNT : NONPROD_ACCOUNT;
+              env.AWS_ROLE = "arn:aws:iam::${account}:role/AWS_${account}_Service"
+              env.STATE_MACHINE_ARN = "arn:aws:states:us-east-1:${account}:stateMachine:${params.buildEnvironment}-client-management-sfn"
+              env.AWS_CREDENTIAL_ID = is_prod ? PROD_AWS_CREDENTIAL_ID : NONPROD_AWS_CREDENTIAL_ID;
+              env.RELEASE_NAME = params.releaseS3Directory
+              if (params.appElbPath[0] != params.buildEnvironment[0])
+              {
+                error("First letter of appElbPath should match first letter of build environment")
+              }
+              clientConfig.put('isNewClient', 'true')
+              clientConfig.put('isNewEnvironment', params.isNewEnvironment.toString())
+              clientConfig.put('environmentName', params.environmentName)
+              clientConfig.put('clientId', params.clientId)
+              clientConfig.put('clientName', params.clientShortName)
+              clientConfig.put('clientHasEGR', params.isEGR ? 'Y' : 'N')
+              clientConfig.put('clientHasCubes', 'Y')
+              clientConfig.put('redshiftId', params.redshiftId)
+
+              clientConfig.put('appElbPath', params.appElbPath)
+              if(params.isNewEnvironment)
+              {
+                clientConfig.put('releaseId', params.releaseS3Directory)
+                clientConfig.put('backupUrl', params.clientBackupUrl)
+                clientConfig.put('environmentType', params.mstrEnvironmentType)
+                clientConfig.put('platformInstanceType', params.platformInstanceType)
+                clientConfig.put('rdsInstanceType', params.rdsInstanceType)
+                clientConfig.put('mstrVersion', params.mstrVersion)
+                clientConfig.put('runPostInstall', 'true')
+                clientConfig.put('deployRW', 'true')
+                clientConfig.put('deployWAR', 'true')
+                clientConfig.put('deployMSTR', 'true')
+              }
+              else
+              {
+                if (!params.env_id)
+                {
+                  error("Environment ID (env_id) is REQUIRED if not a new environment")
+                }
+                clientConfig.put('envId', params.env_id)
+              }
+
+              def jsonBuilder = new JsonBuilder(clientConfig)
+              echo "Client Configuration: \n${jsonBuilder.toString()}"
+
+              try {
+                sh '. /etc/profile.d/jenkins.sh'
+                def userCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                env.JOB_RUNNER = userCause.userId?.find { true }
+                print.header("Deployment to ${params.environmentName} by ${env.JOB_RUNNER}")
+              }
+              catch (err)
+              {
+                print.warn "Unknown BUILD_USER_ID. Error: ${err.getMessage()}"
+                env.JOB_RUNNER = 'Unknown'
+              }
+
+            }
+          }
+        }
+        stage('Authenticate to AWS')
+        {
+            steps
+            {
+                script {
+                    echo "Using AWS Role ${env.AWS_ROLE}"
+                    echo "Using AWS Credential ID ${env.AWS_CREDENTIAL_ID}"
+
+                    //deployApprovers = "jhancoc4,tvetheka,mgeorgie,${getRepoOwnerName()}" // Only the following MSIDs can approve deployment
+                    glAmazonGetTemporaryCredentials credentialsId: "${env.AWS_CREDENTIAL_ID}", roleARN: "${env.AWS_ROLE}", awsRegion: "${AWS_REGION}"
+                    env.AWS_PROFILE = 'saml'
+                }
+            }
+        }
+        stage("Execute step function")
+        {
+            when {
+                expression { params.releaseS3Directory }
+            }
+            steps{
+                script {
+                    if (params.buildEnvironment in ["prod"])
+                    {
+                      if (!(env.JOB_RUNNER in ['mgeorgie','tvetheka','jhancoc4','scheru20']))
+                      {
+                        error("User ${env.JOB_RUNNER} is not allowed to deploy to production environment")
+                      }
+                    }
+                    def branchName = env.GIT_BRANCH.substring(7) //strip off the 'origin/'
+                    def executionName = "${params.clientId}_${params.environmentName.take(15)}_${env.RELEASE_NAME.take(20)}_${branchName.take(20)}_${env.BUILD_NUMBER}"
+                    executionName = executionName.replaceAll("[^a-zA-Z0-9_.-]+","")
+                    print.success "Running step function ${env.STATE_MACHINE_ARN} with execution Name: ${executionName}"
+                    env.EXECUTION_ARN = glAmazonExecuteStepFunction "${env.STATE_MACHINE_ARN}", clientConfig, executionName
+
+                    stepFunctionUrl = 'https://console.aws.amazon.com/states/home?region=us-east-1#/executions/details/' + env.EXECUTION_ARN
+
+                    print.success('Release Kicked off');
+                    echo "StepFunctionURL: ${stepFunctionUrl}"
+
+                    glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                      credentialsType: "user",
+                      flow: "${env.FLOW_NAME}",
+                      message: ":jenkins: Release ${env.RELEASE_NAME} deployment started on environment ${params.environmentName}. Step function URL: ${stepFunctionUrl}"
+                }
+            }
+        }
+    }
+
+    post
+    {
+        success
+        {
+            script {
+              print.success("Release succeeded: ${stepFunctionUrl}")
+            }
+        }
+        failure
+        {
+            script {
+                print.failure('Release Failed')
+            }
+        }
+    }
+}

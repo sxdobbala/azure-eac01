@@ -1,0 +1,9 @@
+# This is a sample configuration and is not currently fully supported by the deployment system.
+# A release can be created with multiple content directories but the deployment process
+# does not currently support multiple directories.
+webVersion: 9.1-SNAPSHOT
+etlVersion: 9.1-SNAPSHOT
+mstrContent: [release-9.0, release-9.1]
+mstrInfraVersion: master
+isSnapshot: true
+releaseName: test-combined-9.1-SNAPSHOT_${timestamp}

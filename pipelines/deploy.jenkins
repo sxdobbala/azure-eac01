@@ -1,0 +1,285 @@
+#!/usr/bin/env groovy
+
+@Library(["com.optum.opa.jenkins"]) _
+import com.optum.jenkins.pipeline.library.scm.Git;
+import com.optum.opa.jenkins.FormatString;
+import com.optum.opa.jenkins.Utils;
+import groovy.transform.Field
+
+@Field
+String stepFunctionUrl = ''
+
+@Field
+String deployLocation = ''
+
+pipeline {
+    options
+    {
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '2'))
+    }
+    environment {
+        PYTHON_VERSION = "3.6"
+        AWS_REGION = "us-east-1"
+        FLOW_NAME='opa-all'
+        FLOWDOCK_TOKEN = 'FLOWDOCK_API_TOKEN'
+        NONPROD_ACCOUNT = '760182235631'
+        PROD_ACCOUNT = '029620356096'
+        S3_ARTIFACT_BUCKET = "${NONPROD_ACCOUNT}-opa-artifacts-opa"
+        NONPROD_AWS_CREDENTIAL_ID = "AWS_OPA_NONPROD_SERVICE_ACCOUNT"
+        PROD_AWS_CREDENTIAL_ID = "AWS_OPA_PROD_SERVICE_ACCOUNT"
+    }
+
+    parameters
+    {
+        choice(
+            name: 'env_name',
+            choices: ['Manual',
+              'd01 [env-164062] DevInfrastructure',
+              'd02 [env-139378] DevContent',
+              'd03 [env-139377] DevPlugins',
+              'q01 [env-144082] QA',
+              's01 [env-145229] Stage',
+              's02 [env-153263] StageAscension (H984216)',
+              'p01 [env-147511] BCBS (H592196)',
+              'p02 [env-160989] Ascension (H984216)',
+              'p03 [env-161845] Lahey (H451171)',
+              'p04 [env-164437] OhioHealth (H941216)',
+              'p05 [env-164471] BayCare (H448464)',
+              'p06 [env-165646] UnitedPhysicians (H623622)',
+              'p07 [env-165695] Mercy (H406239)',
+              'p08 [env-165696] Lifespan (H218562)',
+              'p09 [env-169739] Wilmington (H770635)',
+              'p10 [env-169997] UMass (H053731)',
+              'p11 [env-170643] BaptistHealth (H522275)',
+              'p12 [env-171857] GSQN (H200272)',
+              'p13 [env-172115] UCDavis (H553173)',
+              'p14 [env-172273] BCBSTest (H592196_test)'
+              ],
+            description: 'Select MicroStrategy environment OR choose Manual and fill out env_id below'
+        )
+
+        string(
+            name: 'env_id',
+            defaultValue: '',
+            description: 'MicroStrategy environment (e.g. env-139377)'
+        )
+
+        choice(
+            name: 'buildEnvironment',
+            choices: ['dev', 'qa', 'stage', 'prod', 'ci', 'dev-nina', 'dev-momchil'],
+            description: 'Build environment'
+        )
+
+        string(
+            name: 'releaseS3Directory',
+            defaultValue: '',
+            description: 'S3 folder where bundled artifacts will be uploaded'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'waitForStepFunctionToComplete',
+          description: 'Whether Jenkins job should wait for the release step function to complete'
+          )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'executeMSTRPostinstall',
+          description: 'Toggle execution of MSTR post-install'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'deployRWSchema',
+          description: 'Toggle deployment of RW Schema'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'deployWAR',
+          description: 'Toggle deployment of MSTR WAR'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'deployMSTR',
+          description: 'Toggle migration of MSTR artifacts'
+        )
+    }
+    agent
+    {
+        node {
+            label 'docker-maven-slave'
+        }
+    }
+    stages
+    {
+        stage('Validate Parameters')
+        {
+          steps{
+            script {
+              deployLocation = params.env_name;
+              if (params.env_name == 'Manual')
+              {
+                env.ENV_ID = params.env_id;
+                deployLocation = env.ENV_ID;
+                print.warn "Manually chosen environment id: ${params.env_id}"
+              }
+              else
+              {
+                def results = Utils.getEnvironmentAndClientIdsFromPattern params.env_name
+                env.ENV_ID = results[0]
+                echo FormatString.green("Extracted environment ID ${env.ENV_ID} from name ${params.env_name}")
+              }
+
+              if (!env.ENV_ID || !params.releaseS3Directory)
+              {
+                error(FormatString.failure("env_name (or env_id) and releaseS3Directory settings are required"))
+              }
+              try {
+                sh '. /etc/profile.d/jenkins.sh'
+                def userCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                env.JOB_RUNNER = userCause.userId?.find { true }
+                print.header("Deployment to ${env.ENV_ID} by ${env.JOB_RUNNER}")
+              }
+              catch (err)
+              {
+                print.warn "Unknown BUILD_USER_ID. Error: ${err.getMessage()}"
+                env.JOB_RUNNER = 'Unknown'
+              }
+
+            }
+          }
+        }
+        stage('Resolve Input')
+        {
+          steps{
+            //allow individually specified parameters to override ones from release definition file
+            script{
+              if (params.releaseS3Directory)
+              {
+                env.RELEASE_NAME = params.releaseS3Directory
+              }
+              else {
+                error("Release directory parameter is required!")
+              }
+              echo "Resolved ReleaseName: ${env.RELEASE_NAME}"
+
+              boolean is_prod = params.buildEnvironment in ["stage", "prod"]
+              def account = is_prod ? PROD_ACCOUNT : NONPROD_ACCOUNT;
+              env.AWS_ROLE = "arn:aws:iam::${account}:role/AWS_${account}_Service"
+              env.STATE_MACHINE_ARN = "arn:aws:states:us-east-1:${account}:stateMachine:${params.buildEnvironment}-opa-release-sfn"
+              env.AWS_CREDENTIAL_ID = is_prod ? PROD_AWS_CREDENTIAL_ID : NONPROD_AWS_CREDENTIAL_ID;
+              sh 'printenv | sort'
+            }
+          }
+        }
+        stage('Configure AWS')
+        {
+            steps
+            {
+                script {
+                    boolean is_prod = params.buildEnvironment in ["stage", "prod"]
+                    echo "Using AWS Role ${env.AWS_ROLE}"
+                    echo "Using AWS Credential ID ${env.AWS_CREDENTIAL_ID}"
+
+                    //deployApprovers = "jhancoc4,tvetheka,mgeorgie,${getRepoOwnerName()}" // Only the following MSIDs can approve deployment
+                    glAmazonGetTemporaryCredentials credentialsId: "${env.AWS_CREDENTIAL_ID}", roleARN: "${env.AWS_ROLE}", awsRegion: "${AWS_REGION}"
+                    env.AWS_PROFILE = 'saml'
+                }
+            }
+        }
+        stage("Execute step function")
+        {
+            when {
+                expression { env.ENV_ID }
+            }
+            steps{
+                script {
+                    if (params.buildEnvironment in ["prod"])
+                    {
+                      if (!(env.JOB_RUNNER in ['mgeorgie','tvetheka','jhancoc4','scheru20','pkesharw', 'snath15', 'r79']))
+                      {
+                        error("User ${env.JOB_RUNNER} is not allowed to deploy to production environment")
+                      }
+                    }
+
+                    echo "Executing the step function"
+                    def deploy_war = params.deployWAR ? "true" : "false"
+                    def deploy_mstr = params.deployMSTR ? "true" : "false"
+                    def execute_mstr_postinstall = params.executeMSTRPostinstall ? "true" : "false"
+                    def deploy_rw_schema = params.deployRWSchema ? "true" : "false"
+                    env.LOCAL_BRANCH = env.GIT_BRANCH.substring(7) //trim origin/ from branch name
+                    def payload = [ releaseId: env.RELEASE_NAME.toString(), envId : env.ENV_ID.toString(), deployWAR : deploy_war, deployMSTR : deploy_mstr, deployRW : deploy_rw_schema, runPostInstall : execute_mstr_postinstall]
+
+                    def executionName = "DEPLOY_${env.RELEASE_NAME.take(20)}_${env.ENV_ID}_${env.LOCAL_BRANCH.take(25)}_${env.BUILD_NUMBER}"
+                    executionName = executionName.replaceAll("[^a-zA-Z0-9_.-]+","")
+                    print.success "Running step function ${env.STATE_MACHINE_ARN} with execution Name: ${executionName}"
+
+                    env.EXECUTION_ARN = glAmazonExecuteStepFunction "${env.STATE_MACHINE_ARN}", payload, executionName
+
+                    stepFunctionUrl = 'https://console.aws.amazon.com/states/home?region=us-east-1#/executions/details/' + env.EXECUTION_ARN
+
+                    print.success "StepFunctionURL: ${stepFunctionUrl}"
+
+                    glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                      credentialsType: "user",
+                      flow: "${env.FLOW_NAME}",
+                      message: ":jenkins: Release ${env.RELEASE_NAME} deployment started on environment ${deployLocation}. Step function URL: ${stepFunctionUrl}"
+                }
+            }
+        }
+        stage("Wait for Step Function")
+        {
+          when {
+            allOf{
+              expression { env.ENV_ID }
+              expression { params.waitForStepFunctionToComplete }
+            }
+          }
+          steps {
+            script{
+
+              //def stepFunctionArn = stepFunctionUrl.substring(stepFunctionUrl.lastIndexOf("/")+1)
+              //echo "Step function ARN: ${stepFunctionArn}"
+
+              def status = glAmazonWaitForStepFunction executionARN: "${env.EXECUTION_ARN}"
+              echo "Step function status: [${status}]"
+
+              if (status == "SUCCEEDED")
+              {
+                glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                  credentialsType: "user",
+                  flow: "${env.FLOW_NAME}",
+                  message: ":jenkins-hero: Release ${env.RELEASE_NAME} deployment succeeded on environment ${deployLocation}. Step function URL: ${stepFunctionUrl}"
+              }
+              else
+              {
+                glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                  credentialsType: "user",
+                  flow: "${env.FLOW_NAME}",
+                  message: ":jenkins-explode: Release ${env.RELEASE_NAME} deployment ${status} on environment ${deployLocation}. Step function URL: ${stepFunctionUrl}"
+                error("Step function execution ${env.EXECUTION_ARN} ${status}")
+              }
+            }
+          }
+        }
+    }
+
+    post
+    {
+        success
+        {
+            script {
+              print.success("Release succeeded: ${stepFunctionUrl}")
+            }
+        }
+        failure
+        {
+            script {
+                print.failure('Release Failed')
+            }
+        }
+    }
+}

@@ -1,0 +1,160 @@
+#!/usr/bin/env groovy
+
+@Library(["com.optum.opa.jenkins"]) _
+import com.optum.jenkins.pipeline.library.scm.Git;
+import com.optum.opa.jenkins.FormatString;
+import com.optum.opa.jenkins.Utils;
+
+
+pipeline {
+    options
+    {
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '2'))
+    }
+    environment {
+      FLOW_NAME='opa-all'
+      FLOWDOCK_TOKEN = 'FLOWDOCK_API_TOKEN'
+    }
+
+    parameters
+    {
+        string(
+            name: 'env_id',
+            defaultValue: '',
+            description: 'MicroStrategy environment (e.g. env-139377)'
+        )
+
+        string(
+          defaultValue: '10.0-SNAPSHOT.yml',
+          name: 'releaseDefinitionFile',
+          description: 'Determines which release definition to build on the schedule'
+          )
+
+        string(
+          defaultValue: 'NightlyBuild',
+          name: 'buildOutputFolder',
+          description: 'Name of the S3 build output folder'
+          )
+
+        choice(
+            name: 'buildEnvironment',
+            choices: ['dev', 'qa', 'stage', 'prod', 'ci'],
+            description: 'Build Environment')
+
+        /*
+        string(
+          defaultValue: '',
+          name: 'buildEnvironment',
+          description: 'Name of the build environment (dev, qa, etc.)'
+          )
+        */
+    }
+    agent
+    {
+        node {
+            label 'docker-maven-slave'
+        }
+    }
+    stages
+    {
+        stage('Resolve Input')
+        {
+          steps{
+            script {
+              def branch_name = env.GIT_BRANCH; //e.g. origin/preprod
+              env.LOCAL_BRANCH = branch_name.substring(7) //strips origin/
+              switch(params.buildEnvironment)
+              {
+                case ['dev', 'qa', 'ci']:
+                  env.SHARED_ENVIRONMENT = 'nonprod-shared'
+                  break
+                case ['stage', 'prod']:
+                  error('Continuous Deployment pipeline disallowed on stage and production environments for now')
+                  env.SHARED_ENVIRONMENT = 'prod-shared'
+                  break
+                default:
+                  error("unrecognized buildEnvironment: [${params.buildEnvironment}]")
+              }
+              try {
+                sh '. /etc/profile.d/jenkins.sh'
+                def userCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                env.JOB_RUNNER = userCause.userId?.find { true }
+                print.header("Deployment to ${params.buildEnvironment} by ${env.JOB_RUNNER}")
+                if ()
+              }
+              catch (err)
+              {
+                print.warn "Unknown BUILD_USER_ID. Error: ${err.getMessage()}"
+                env.JOB_RUNNER = 'Unknown'
+              }
+            }
+          }
+        }
+        stage('Apply Shared Terraform') {
+            steps {
+              script{
+                print.header "APPLY ${env.SHARED_ENVIRONMENT}"
+              }
+              // Run the build on the same branch where this pipeline is being run
+              build job: "OPA/OPA-EAC/${env.LOCAL_BRANCH}",
+                    parameters: [
+                    string(name: 'terraformAction', value: 'apply'),
+                    string(name: 'buildEnvironment', value: env.SHARED_ENVIRONMENT),
+                    booleanParam(name: 'autoApprove', value: true)
+                    ]
+            }
+        }
+        stage('Apply Environment Terraform') {
+            steps {
+              script{
+                print.header "APPLY ${params.buildEnvironment}"
+              }
+              // Run the build on the same branch where this pipeline is being run
+              build job: "OPA/OPA-EAC/${env.LOCAL_BRANCH}",
+                    parameters: [
+                    string(name: 'terraformAction', value: 'apply'),
+                    string(name: 'buildEnvironment', value: params.buildEnvironment),
+                    booleanParam(name: 'autoApprove', value: true)
+                    ]
+            }
+        }
+        stage('Deploy End-to-End Release') {
+          when{
+            allOf{
+              expression { params.env_id }
+            }
+          }
+          steps {
+            script{
+              print.header "EXECUTE Build and Deploy to ${params.env_id}"
+            }
+            // Run the build on the same branch where this pipeline is being run
+            build job: "Build and Deploy/${env.LOCAL_BRANCH}",
+                  parameters: [
+                  string(name: 'releaseDefinitionFile', value: params.releaseDefinitionFile),
+                  string(name: 'buildOutputFolder', value: params.buildOutputFolder),
+                  string(name: 'buildEnvironment', value: params.buildEnvironment),
+                  string(name: 'env_id', value: params.env_id),
+                  ]
+          }
+        }
+    }
+
+    post
+    {
+        success
+        {
+            script {
+                print.success('Terraform Deployment and Release Completed');
+            }
+        }
+        failure
+        {
+            script {
+                print.failure('Release Failed')
+            }
+        }
+    }
+}

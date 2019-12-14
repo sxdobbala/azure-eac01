@@ -1,0 +1,55 @@
+{
+    "Comment": "Workflow for creating a MSTR backup",
+    "StartAt": "Create Backup?",
+    "States": {
+        "Create Backup?": {
+            "Comment": "Check input to determine if MSTR backup is needed",
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Not": {
+                        "Variable": "$.clientId",
+                        "StringEquals": ""
+                    },
+                    "Next": "Create Backup"
+                }
+            ],
+            "Default": "Set Blank Backup Path",
+            "InputPath": "$",
+            "OutputPath": "$"
+        },
+        "Set Blank Backup Path": {
+            "Comment": "Set the backup path parameter to a blank string",
+            "Type": "Pass",
+            "InputPath": "$",
+            "OutputPath": "$",
+            "Result": {
+                "Payload": ""
+            },
+            "ResultPath": "$.results.createBackup",
+            "Next": "Workflow Succeeded"
+        },
+        "Create Backup": {
+            "Comment": "Create MSTR backup using the specified clientId",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${MSTR_BACKUP_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "clientId.$": "$.clientId",
+                    "dumpMode.$": "$.dumpMode"
+                }
+            },
+            "ResultPath": "$.results.createBackup",
+            "OutputPath": "$",
+            "Next": "Workflow Succeeded"
+        },
+        "Workflow Succeeded": {
+            "Type": "Pass",
+            "InputPath": "$",
+            "OutputPath": "$.results.createBackup.Payload",
+            "End": true
+        }
+    }
+}

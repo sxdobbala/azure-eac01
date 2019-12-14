@@ -1,0 +1,118 @@
+{
+    "Comment": "Workflow for onboarding clients on a MSTR stack and Redshift instance",
+    "StartAt": "Setup Redshift Security",
+    "States": {
+        "Setup Redshift Security": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${OPA_CLIENT_REDSHIFT_SECURITY_LAMBDA_ARN}",
+                "Payload": {
+                    "envId.$": "$.envId",
+                    "redshiftId.$": "$.redshiftId"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": null,
+            "Next": "Onboard Client"
+        },
+        "Onboard Client": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${OPA_CLIENT_ONBOARDING_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "clientId.$": "$.clientId",
+                    "clientName.$": "$.clientName",
+                    "clientHasEGR.$": "$.clientHasEGR",
+                    "envId.$": "$.envId",
+                    "redshiftId.$": "$.redshiftId"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": null,
+            "Next": "Deploy RW Schema"
+        },
+        "Deploy RW Schema": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${OPA_DEPLOY_RW_SCHEMA_LAMBDA_ARN}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "envId.$": "$.envId",
+                    "clientId.$": "$.clientId",
+                    "redshiftId.$": "$.redshiftId"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": null,
+            "Next": "Create New ELB Rule"
+        },
+        "Create New ELB Rule": {
+            "Comment": "Creating new ELB listener rule targeting the client's new environment",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${TF_RUNNER_LAMBDA_ARN}",
+                "Payload": {
+                    "httpMethod": "POST",
+                    "body": {
+                        "tf_source_bucket": "${TF_SOURCE_BUCKET}",
+                        "tf_source_key": "${TF_SOURCE_KEY}",
+                        "tf_vars": {
+                            "env_prefix": "${ENV_PREFIX}",
+                            "env_id.$": "$.envId",
+                            "env_name.$": "$.environmentName",
+                            "app_elb_path.$": "$.appElbPath",
+                            "opa_release_sns_topic_arn": "${OPA_RELEASE_SNS_TOPIC_ARN}",
+                            "vpc_id": "${VPC_ID}",
+                            "create_listener_rule": "true"
+                        }
+                    }
+                }
+            },
+            "ResultPath": null,
+            "OutputPath": "$",
+            "Next": "Change Timezone"
+        },
+        "Change Timezone": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${OPA_TIMEZONE_CHANGE_LAMBDA_ARN}",
+                "Payload": {
+                    "envId.$": "$.envId"
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": null,
+            "Next": "Update OPA Master"
+        },
+        "Update OPA Master": {
+            "Comment": "Invoke OPA Master lambda to save the client config",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${OPA_MASTER_LAMBDA_ARN}",
+                "Payload": {
+                    "httpMethod": "PUT",
+                    "body": {
+                        "clientId.$": "$.clientId",
+                        "data": {
+                            "client_name.$": "$.clientName",
+                            "client_has_egr.$": "$.clientHasEGR",
+                            "client_has_cubes.$": "$.clientHasCubes",
+                            "env_id.$": "$.envId",
+                            "redshift_id.$": "$.redshiftId"
+                        }
+                    }
+                }
+            },
+            "OutputPath": "$",
+            "ResultPath": "$.results.updateOpaMaster",
+            "End": true
+        }
+    }
+}

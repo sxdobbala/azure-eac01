@@ -1,0 +1,18 @@
+{
+    "project_config_file": "projectconfig.scp",
+    "cube_file_location": {},
+    "web_server_macro": {},
+    "cache_file_location": {},
+    "mstr_admin_group_id": "5F3FAFE111D2D8CC6000CC8E67019608",
+    "mstr_oadw_database_instance": "OPA OADW Database Instance",
+    "mstr_oadw_connection_name": " OADW Database Connection",
+    "mstr_rw_database_instance": "OPA RW Database Instance",
+    "mstr_xquery_database_instance": "OPA XQ Database Instance",
+    "mstr_xquery_connection_name": " XQ Database Connection",
+    "client_odbc_entry": "OPA_WH_",
+    "template_file": "redshift-odbc-template.ini",
+    "mstr_login_name": " OADW Login",
+    "subscription_type": "Cache",
+    "parallel_cube_instances": 2,
+    "cube_folder_id": "337EC3434FEE86291AA104ABE40CD15B"
+}

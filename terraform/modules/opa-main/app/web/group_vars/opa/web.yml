@@ -1,0 +1,311 @@
+# This file contains all of the configurations required for WAR deployment
+# Any new properties should first be added to this file with proper defaults
+# and can then be overridden in account/logical environemnt/mstr instance specific yml files
+# See Inventory file (sibling of group_vars folder) for hierarchy of accounts, logical environemnts and mstr instances
+# Use templated values wherever applicable to avoid duplication
+webapp_name: MicroStrategy
+elb_hostname: ""
+hostname: "{{ ansible_hostname | upper }}"
+hostname_fqdn: "{{ ansible_fqdn }}"
+tomcat_root: /opt/apache/tomcat/latest
+webapp_path: "{{ tomcat_root }}/{{ webapp_name }}"
+stage_webapp_path: "{{ playbook_dir }}/oap-mstr-web"
+stage_webapp_xml_path: "{{ stage_webapp_path }}/WEB-INF/xml"
+stage_webapp_classes_path: "{{ stage_webapp_path }}/WEB-INF/classes"
+plugins_path_tmpl: "{{ stage_webapp_path }}/plugins/{{ plugin_name }}/WEB-INF/classes"
+envname: "{{ ansible_hostname | regex_search('(env-[0-9]+)') }}"
+dataloader_endpoint: "https://{{ env_prefix }}-dataloader.{{ ansible_ec2_placement_region }}.elasticbeanstalk.com"
+release_source: "/opt/opa/local"
+aws_account_id: ""
+web:
+  has_advanced_mstr_logging: False
+  sys_defaults_xml:
+    useLastDataSourceToGetElements: 1
+  sys_defaults_server_settings:
+    showLoginPageAfterLogout: "false"
+  reg_settings:
+    PARAMETER_SERVER: "{{ hostname }}"
+    PARAMETER_PORT: 0
+    PARAMETER_PROJECT: Performance Analytics
+
+    MSTR_ADMIN_USER: registryAdmin
+    MSTR_ADMIN_PWD: "{{ ssm_params.sso_esm_admin_password }}"
+
+    jdbc.url: ""
+
+    # Locally this should be the default: http://localhost:8080/MicroStrategy/servlet/
+    # Other environments should point to the cluster, using https, without the port
+    CLUSTER_URL: "https://{{ elb_hostname }}/{{ ssm_params.elb_path }}/{{ webapp_name }}/servlet/"
+
+    REGISTRY_TIMEOUT_LENGTH: 1200000
+    REGISTRY_RETRY_FREQUENCY: 2500
+
+    WHITE_LISTED_REFERRERS:
+
+    # Search Path value for Redshift
+    SEARCH_PATH: rw
+
+    # End point to report and update Link server (Care Coordination)
+    LINK_SNS_TOPIC_ARN: arn:aws:sns:{{ ansible_ec2_placement_region }}:{{ aws_account_id }}:{{ env_prefix }}-registry-change-sns-topic
+    # EX: LINK_SNS_TOPIC_ARN="arn:aws:sns:us-east-1:760182235631:dev-registry-change-sns-topic"
+
+    # Data loader end points
+    DATA_LOADER_END_POINT: "{{ dataloader_endpoint }}"
+
+    ####################################
+    # FF Export parameters #
+    ####################################
+
+    FILE_LOCATION: "/opt/opa/local/opa_outbound/"
+    AUDIT_LOG_PATH: "{{ webapp_path }}/WEB-INF/log"
+
+    # The %g is used as the pattern for java.util.logging.
+    AUDIT_LOG_NAME: flatFileExportAuditLog.%g.log
+    OPA_ADMIN_PWD: "{{ ssm_params.MSTR_PASSWORD }}"
+
+    # !! Below properties should not change and can be used "as is" across all environments
+
+    ####################################
+    # MicroStrategy default parameters #
+    ####################################
+
+    # Work around the message id not in in box , number in seconds
+    MESSAGE_ID_READY_TIMEOUT: 10
+
+    # The ID of the report that is used to retrieve user registries "Registries PIQ"
+    REGISTRIES_REPORT_ID: 27AACCAC4A961C0D90BE95BF07FC9778
+
+    # Used to retrieve information about a specified registry
+    REGISTRY_REPORT_ID: 9CEAC6D2421F016CD8D70A80539C8D20
+
+    # The ID of the report that returns the clientId
+    # Report Name: Client Configuration Info
+    CLIENT_ID_REPORT_ID: 4A0BF87E414F645D01C1F392C54EFB02
+
+    # XQuery report, for use with subscriptions
+    XQ_REGISTRY_UPDATE_REPORT_ID: 8F8E07DB44AE60C8F1CD83B24B34696A
+
+    # XQuery report id that returns the db user/pw
+    XQ_DB_INFO_REPORT_ID: 57B8800044934954D6485DB504452629
+
+    # The parent folder where all "{Client} Shared Registries" folders are saved
+    SHARED_REGISTRIES_PARENT_FOLDER: Public Objects\\Reports
+
+    # The report that returns the documents folder id -- CURRENTLY USING DUMMY Report
+    DOCUMENTS_FOLDER_REPORT_ID: 09B8A5754AFB1E64B7D2669E159CDC74
+
+    # FFSQL Report Guid
+    MANAGE_REGISTRY_RPT_GUID: 05E6CCFE4016BCAA9DDD82BB5637400F
+    # Prompt Object Guids
+    OPER_TYPE_PROMPT_GUID: 172A748F4F8CDA39547330AC15727C4B
+    REG_ID_PROMPT_GUID: C1A4E0454F5A3EC41BCF93BF1E72AA06
+    CLIENT_ID_PROMPT_GUID: C8FEF579451152437CE849A63326C633
+    REG_NAME_PROMPT_GUID: 7BFB2F4B40930972DED18790C650B5F0
+    REG_DESC_PROMPT_GUID: 9CB7D52D436E54E8B9138EB30CB4E4C3
+    REC_TYPE_PROMPT_GUID: 571CD3404E85053003F0269523552A0A
+    REG_STATUS_PROMPT_GUID: BE6414364D4DE747DB7F0D8765CFFDF0
+    DOC_ID_PROMPT_GUID: CE4691F44037A4AC2AF1A99C9EC8EA9E
+    CREATED_BY_PROMPT_GUID: 371ECA0D48087310A595DF8C50EC50CD
+    REG_SHARED_PROMPT_GUID: 86A55E204B3FF92EE2CBE18453898063
+    FREQ_PROMPT_GUID: 211AF6954CF7D314C68670A1EA72A0AF
+    START_DATE_PROMPT_GUID: 4A58CE4741B904055BA8A6BFDA7CC651
+    END_DATE_PROMPT_GUID: 8B3A54F44CF09330A4014EB60D245C24
+    SUBS_NAME_PROMPT_GUID: 4E3A8F254ADBF32054A6B0B258F46AB8
+    TRIGGER_ID_PROMPT_GUID: BD37099D4024ADF5482CC6A90DF0FF48
+    PROJ_NAME_PROMPT_GUID: 071C784D4861F3EBDE6877BABB9E42C7
+    LINK_DEST_TYPE_PROMPT_GUID: B3A27C2E49A0D1EB6A1AB6A2B3739922
+    PROMPT_XML_PROMPT_GUID: 6FAE41C043D7A9BBB1652A9B2A797279
+    SCHEDULE_ID_PROMPT_GUID: 7696E2294BB1AE00ED5F0DB5EEEF69E2
+    REGISTRY_ID_PROMPT_GUID: D594A29049848D3472C97693FE7ED263
+    REGISTRY_URL_PROMPT_GUID: FDB7E2204AAB13C9F2D751B7169E6DEA
+    REGISTRY_LOGIN_PROMPT_GUID: DBE61FB94A348B7C8A9B769F192334DA
+    LINK_FLAG_PROMPT_GUID: 3D30E3A44FAEBCC803BC42B808A6E641
+    CLIENT_FOLDER_PROMPT_GUID: 1616671D426BD2B1F2CBD08959512237
+    CLIENT_FOLDER_GUID: 1D8AF20A11E87A3D01B60080EF85ED32
+    SCHEDULED_DOCUMENT_CUSTOM_FEATURE_GUID: 083A58DF4224C025F56B4E9FB79CAD6C
+    FF_MONTHLY_SCHEDULE_ID: 05FEDFB5012E4FC09164C173CDD07199
+    FF_WEEKLY_SCHEDULE_ID: 2D7D0D2F0026416DAA687A2E47FE07A7
+    FF_DAILY_SCHEDULE_ID: 297A791FAA5A462EA92F925FC507521E
+    XQ_SCHEDULED_DOCUMENT_UPDATE_REPORT_ID: 4E66960C4B9C493464C5EF800B8657B3
+
+    # Registry Grid Vis Lookup
+    GRID_VIS_IDENTIFIER: "@"
+    MPI_ATTR_GUID: 0C998B074CCEBCAFAA4A52B3D0D30A87
+
+    # Attribute Patient ID 7 From Id used the minimize the original document
+    ATTR_PATIENT_ID: 4F41DE5648DDE42148C655A854519DF9
+    ATTR_PATIENT_FORM_ID: 45C11FA478E745FEA08D781CEA190FE5
+
+    # Registry schedule - determine minutes past midnight to run registry
+    REGISTRY_SCHEDULE_MINUTES_PAST_MIDNIGHT: 60
+
+    # Empty properties to appease property class initiation
+    crypto.key: ""
+    crypto.salt: ""
+    jdbc.url: ""
+
+  scheduled_export_settings:
+    MSTR_ADMIN_USER: registryAdmin
+    PARAMETER_PROJECT: Performance Analytics
+
+    SE_ID_PROMPT_GUID: D594A29049848D3472C97693FE7ED263
+    SE_URL_PROMPT_GUID: FDB7E2204AAB13C9F2D751B7169E6DEA
+    SE_LOGIN_PROMPT_GUID: DBE61FB94A348B7C8A9B769F192334DA
+
+    FF_MONTHLY_SCHEDULE_ID: 05FEDFB5012E4FC09164C173CDD07199
+    FF_WEEKLY_SCHEDULE_ID: 2D7D0D2F0026416DAA687A2E47FE07A7
+    FF_DAILY_SCHEDULE_ID: 297A791FAA5A462EA92F925FC507521E
+
+    SCHEDULED_DOCUMENT_CUSTOM_FEATURE_GUID: 083A58DF4224C025F56B4E9FB79CAD6C
+
+    XQ_SCHEDULED_DOCUMENT_UPDATE_REPORT_ID: 4E66960C4B9C493464C5EF800B8657B3
+    FLAT_FILE_SCHEDULE_MINUTES_PAST_MIDNIGHT: 60
+    CLUSTER_URL: "https://{{ elb_hostname }}/{{ ssm_params.elb_path }}/{{ webapp_name }}/servlet/"
+    DATA_LOADER_END_POINT: "{{ dataloader_endpoint }}"
+
+    FLAT_FILE_TIMEOUT_LENGTH: 1200000
+    FLAT_FILE_RETRY_FREQUENCY: 2500
+
+    FILE_LOCATION: "/opt/opa/local/opa_outbound/"
+    AUDIT_LOG_PATH: "/var/log/"
+    # The %g is used as the pattern for java.util.logging.
+    AUDIT_LOG_NAME: "flatFileExportAuditLog.%g.log"
+
+  listmanager_settings:
+    LOOKUP_RPT_GUID: E905760F473700D309D7588126A27BA9
+    LIST_ROLLBACK_RPT_GUID: 9DD5D8134385DAB7972AEDA6A9F0F483
+    FILE_ID_PROMPT_GUID: 66312E924DE75CC40A6705B48905BCF5
+    LIST_NAME_PROMPT_GUID: 65481FDA4BB561E9A61130999DE02A4B
+    LIST_STATUS_PROMPT_GUID: C8571B4F47568529A7575A8F401762FE
+    CLIENT_ID_PROMPT_GUID: 9FF963FB46D84A5633BC949C9C1BA834
+    CREATED_BY_PROMPT_GUID: 869F90914256C710B19A3E83420709A8
+    CLIENT_DS_ID_PROMPT_GUID: 9E14BC8944A8FC740AD92C9BE0D7B9D7
+    ID_TYPE_PROMPT_GUID: 5392CADE4507DC2B3766469586769F44
+    LIST_TYPE_PROMPT_GUID: D7077F9B47FB7030C1E45D829674FDA2
+    LIST_SHARED_PROMPT_GUID: 1C58109E44429A9176891BA1C82A6DD2
+    UPLOAD_RPT_GUID: F38F708C4DFBAEEF0D2A38AAF8634610
+    LIST_CONTENTS_PROMPT_GUID: A5EC427F4D110C08CD16D8A679025349
+    PATIENT_MATCH_RPT_GUID: ED9E43744FC1354990F332BCD69B73A7
+    PROVIDER_MATCH_RPT_GUID: E766450246B0F00990F0DABCBAD18D96
+    PATIENT_LIST_ATTR_GUID: 8CDEE2D24CAC420E68FD6896EC193DDB
+    PROVIDER_LIST_ATTR_GUID: 9562D29C417E80CA4F82CB855B527DF9
+    UPLOADED_ID_ATTR_GUID: D00420124893383DF0704A9653C15D19
+    AVAILABLE_PATIENT_ATTR_GUID: B54AB3D14A62CD63E915AB8FFD8CDF64
+    AVAILABLE_PROVIDER_ATTR_GUID: 698A0B144A5A8D5005D6FFBE25A88406
+    MATCHING_IDS_SUBMISSION_RPT_GUID: 24A21DF847A2EDF469C7588DAE13A628
+    LIST_MATCHING_IDS_PROMPT_GUID: 949DD4CD438E3895DB9747BA889F86DA
+    LIST_ID_PROMPT_GUID: E912A5CD45D4C743F94418A9ED793B2A
+    LIST_ID_RPT_GUID: 824811524456B5211D6DD8B90C62350C
+    LIST_ID_OBJ_PROMPT_GUID: 1B005DE24967DAB168FCC69656539782
+    TEMP_TABLE_CLEANUP_RPT_GUID: 284DF78F4ED6CA975F593A83C794DCBF
+    DATA_SOURCE_ATTR_GUID: 8E02C15D44004AF6C020A680AAB4447C
+    DEFAULT_IDS_IN_BLOCK: 40
+    MAX_UPLOAD_FILE_SIZE: 15728640
+    PARAMETER_SERVER: "{{ hostname }}"
+    PARAMETER_PROJECT: Performance Analytics
+    DATA_LOADER_END_POINT: "{{ dataloader_endpoint }}"
+    SEARCH_PATH: rw,rep
+    XQ_DB_INFO_REPORT_ID: 57B8800044934954D6485DB504452629
+    # Empty properties to appease property class initiation
+    crypto.key: ""
+    crypto.salt: ""
+    jdbc.url: ""
+  listmanager_diy_settings:
+    LOOKUP_RPT_GUID: E905760F473700D309D7588126A27BA9
+    LIST_ROLLBACK_RPT_GUID: 9DD5D8134385DAB7972AEDA6A9F0F483
+    FILE_ID_PROMPT_GUID: 66312E924DE75CC40A6705B48905BCF5
+    LIST_NAME_PROMPT_GUID: 65481FDA4BB561E9A61130999DE02A4B
+    LIST_STATUS_PROMPT_GUID: C8571B4F47568529A7575A8F401762FE
+    CLIENT_ID_PROMPT_GUID: 9FF963FB46D84A5633BC949C9C1BA834
+    CREATED_BY_PROMPT_GUID: 869F90914256C710B19A3E83420709A8
+    CLIENT_DS_ID_PROMPT_GUID: 9E14BC8944A8FC740AD92C9BE0D7B9D7
+    ID_TYPE_PROMPT_GUID: 5392CADE4507DC2B3766469586769F44
+    LIST_TYPE_PROMPT_GUID: D7077F9B47FB7030C1E45D829674FDA2
+    LIST_SHARED_PROMPT_GUID: 1C58109E44429A9176891BA1C82A6DD2
+    UPLOAD_RPT_GUID: F38F708C4DFBAEEF0D2A38AAF8634610
+    LIST_CONTENTS_PROMPT_GUID: A5EC427F4D110C08CD16D8A679025349
+    PATIENT_MATCH_RPT_GUID: ED9E43744FC1354990F332BCD69B73A7
+    PROVIDER_MATCH_RPT_GUID: E766450246B0F00990F0DABCBAD18D96
+    PATIENT_LIST_ATTR_GUID: 8CDEE2D24CAC420E68FD6896EC193DDB
+    PROVIDER_LIST_ATTR_GUID: 9562D29C417E80CA4F82CB855B527DF9
+    UPLOADED_ID_ATTR_GUID: D00420124893383DF0704A9653C15D19
+    AVAILABLE_PATIENT_ATTR_GUID: B54AB3D14A62CD63E915AB8FFD8CDF64
+    AVAILABLE_PROVIDER_ATTR_GUID: 698A0B144A5A8D5005D6FFBE25A88406
+    MATCHING_IDS_SUBMISSION_RPT_GUID: 24A21DF847A2EDF469C7588DAE13A628
+    LIST_MATCHING_IDS_PROMPT_GUID: 949DD4CD438E3895DB9747BA889F86DA
+    LIST_ID_PROMPT_GUID: E912A5CD45D4C743F94418A9ED793B2A
+    LIST_ID_RPT_GUID: 824811524456B5211D6DD8B90C62350C
+    LIST_ID_OBJ_PROMPT_GUID: 1B005DE24967DAB168FCC69656539782
+    TEMP_TABLE_CLEANUP_RPT_GUID: 284DF78F4ED6CA975F593A83C794DCBF
+    DATA_SOURCE_ATTR_GUID: 8E02C15D44004AF6C020A680AAB4447C
+    PATIENT_ATTR_GUID: 0C998B074CCEBCAFAA4A52B3D0D30A87
+    PROVIDER_ATTR_GUID: 097CDA5840C5A896F5101D8B7EBC6E90
+    MAX_ROWS_VI_DOC_RESULT: 5000
+    PARAMETER_PROJECT: Performance Analytics
+    DATA_LOADER_END_POINT: "{{ dataloader_endpoint }}"
+    SEARCH_PATH: rw,rep
+    XQ_DB_INFO_REPORT_ID: 57B8800044934954D6485DB504452629
+    # Empty properties to appease property class initiation
+    crypto.key: ""
+    crypto.salt: ""
+    jdbc.url: ""
+  okta-sso_settings:
+    com.optum.mstrweb.sso.okta.clientid: ""
+    com.optum.mstrweb.sso.okta.secret: "{{ ssm_params.sso_okta_secret }}"
+    com.optum.mstrweb.sso.okta.oktadiscoveryurl: "https://dev-550358.oktapreview.com/.well-known/openid-configuration"
+    com.optum.mstrweb.sso.okta.oktalogouturl: "https://dev-550358.oktapreview.com/login/signout"
+    com.optum.mstrweb.sso.okta.mstrcallbackurl: "https://{{ elb_hostname }}/{{ ssm_params.elb_path }}/{{ webapp_name }}/callback?client_name=OidcClient"
+    com.optum.mstrweb.sso.okta.configparam.idp: ""
+    com.optum.mstrweb.sso.oidc.connect.timeout: 2000
+  okta_esm_settings:
+    com.optum.mstrweb.sso.okta.esm.mstr.is.admin.username: "registryAdmin"
+    com.optum.mstrweb.sso.okta.esm.mstr.is.admin.password: "{{ ssm_params.sso_esm_admin_password }}"
+    com.optum.mstrweb.sso.okta.esm.mstr.is.server.name: "{{ hostname }}"
+    com.optum.mstrweb.sso.okta.esm.mstr.is.server.port: "34952"
+    com.optum.mstrweb.sso.okta.esm.onelogin.api.baseurl: "https://oneloginbeta.advisory.com/api/"
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.clients.guid: "1D8AF20A11E87A3D01B60080EF85ED32"
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.opa.guid: "1B5AADCC11E87A3D01000080EF75CF36"
+    com.optum.mstrweb.sso.okta.esm.provisionurl.stem: "https://{{ elb_hostname }}/{{ ssm_params.elb_path }}/{{ webapp_name }}/servlet/mstrWeb"
+    com.optum.mstrweb.sso.okta.esm.loginurl: "https://login-beta.performanceanalytics.optum.com"
+    com.optum.mstrweb.sso.okta.esm.mstr.personae.guids.lowest.first: "CF302E654B4AD0324431B990F04D70A0,15F65E794366FC0BD009549DBA7F7916,CC215B484F26FF889C4E7B981E8645C2,70EE9DF84ED34CAD866FA8982B30A805"
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.opa.userrole.consumer.guid: "CF302E654B4AD0324431B990F04D70A0"
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.opa.userrole.executive.guid: "15F65E794366FC0BD009549DBA7F7916"
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.opa.userrole.analyst.guid: "CC215B484F26FF889C4E7B981E8645C2"
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.opa.userrole.clientadmin.guid: "70EE9DF84ED34CAD866FA8982B30A805"
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.opa.externalEGR.guid: "E104241211E8854201B60080EF558F36"
+    com.optum.mstrweb.sso.okta.esm.mstr.opa.projectname: "Performance Analytics"
+    com.optum.mstrweb.sso.okta.esm.mstr.device.email.objectid: "1D2E6D168A7711D4BE8100B0D04B6F0B"
+    com.optum.mstrweb.sso.okta.esm.inuserprofile.forclientadmin.unhidden.folders: "My Reports"
+    com.optum.mstrweb.sso.okta.esm.opa.siamapplnkey: ""
+    com.optum.mstrweb.sso.okta.esm.environmentkey: ""
+    com.optum.mstrweb.sso.okta.esm.rowlevelsecurity.account.endpoint: "accounts"
+    com.optum.mstrweb.sso.okta.esm.rowlevelsecurity.provider.endpoint: "provideraffiliation"
+
+    # EM
+    com.optum.mstrweb.sso.okta.esm.mstr.folder.em.guid: "AB421B1346B7592E1BD5FE8A8707D319"
+    com.optum.mstrweb.sso.okta.esm.mstr.personae.guids.em.lowest.first: "95709B5F4EF2697A86791C956489BC5B"
+    com.optum.mstrweb.sso.okta.esm.em.siamapplnkey: ""
+    com.optum.mstrweb.sso.okta.esm.dataloder.endpoint: "{{ dataloader_endpoint }}"
+    com.optum.mstrweb.sso.okta.esm.opa.searchpath: "rw"
+    com.optum.mstrweb.sso.okta.esm.jdbc.url: ""
+
+  client_users_group_guid_to_users_folder_lookup:
+    1234: 
+      ClientUsersFolderName: "Mock Users"
+    133AC8E748BB64E4A2F16794F604E656: 
+      ClientUsersFolderName: "NYU Users"
+    6366A61446F9662C83E0DFA24D08E8FC: 
+      ClientUsersFolderName: "Populytics Users"
+    0BEC4B3C11E886CE01AF0080EFF57A32: 
+      ClientUsersFolderName: "Blue Cross NC Users"
+    720132BC4A192165D4CBC380D7A797B9: 
+      ClientUsersFolderName: "Demo Users"
+    2B9F4060422FEB1415AF3F8A876D84DA: 
+      ClientUsersFolderName: "Training Users"
+
+  custom_alert_message:
+    MaintenanceMessage: "Performance Analytics will be down for scheduled maintenance"
+    DateTimeFormat: "MM/dd/yyyy HH:mm:ss"
+    StartDateTime: "12/18/2018 17:00:00"
+    EndDateTime: "12/31/2018 20:00:00"
+    Stylesheet: "CustomMessageStylesheet.css"

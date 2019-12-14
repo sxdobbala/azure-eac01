@@ -1,0 +1,12 @@
+# opa-prod-mstr-enterprise-3
+web:
+  okta-sso_settings:
+    com.optum.mstrweb.sso.okta.clientid: '0oabqce0loyv34P7W1t7'
+
+  client_users_group_guid_to_users_folder_lookup:
+    1BD3755811E9D58200000080EF05AEB6:
+      ClientUsersFolderName: "Lahey Users"
+
+  custom_alert_message:
+    StartDateTime: "12/18/2018 17:00:00"
+    EndDateTime: "12/31/2018 20:00:00"

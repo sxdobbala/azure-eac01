@@ -1,0 +1,7 @@
+webVersion: 10.0-SNAPSHOT
+etlVersion: 10.0-SNAPSHOT
+rwSchemaVersion: 10.0-SNAPSHOT
+webDeploymentVersion: 10.0-SNAPSHOT
+mstrContent: release-10.0
+isSnapshot: true
+releaseName: release-10.0-SNAPSHOT_${timestamp}

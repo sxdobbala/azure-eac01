@@ -1,0 +1,11 @@
+web:
+  okta-sso_settings:
+    com.optum.mstrweb.sso.okta.clientid: "0oacdujhlwO5mruw41t7"
+
+  client_users_group_guid_to_users_folder_lookup:
+    852F66AE11EA0C7A00000080EFF5AAF2:
+      ClientUsersFolderName: "GSQN Users"
+
+  custom_alert_message:
+    StartDateTime: "12/18/2018 17:00:00"
+    EndDateTime: "12/31/2018 20:00:00"

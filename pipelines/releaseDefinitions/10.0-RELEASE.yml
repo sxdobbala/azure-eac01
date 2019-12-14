@@ -1,0 +1,7 @@
+webVersion: 10.0
+etlVersion: 10.0.1
+rwSchemaVersion: 10.0.1
+webDeploymentVersion: 10.0.2
+mstrContent: release-10.0
+isSnapshot: false
+releaseName: release-10.0_v1

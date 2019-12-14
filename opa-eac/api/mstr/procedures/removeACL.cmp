@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="ISO-8859-1" standalone="no"?>
+<PROCEDURE_DEFINITION>
+<DESCRIPTION>This procedure removes ACL for the object only if an ACL is prsent for input group. Propagate field is needed only for Folders. propagate field values - PROPAGATE OVERWRITE RECURSIVELY, PROPAGATE OVERWRITE, PROPAGATE RECURSIVELY
+Examples:
+
+EXECUTE PROCEDURE removeACL ("Performance Analytics", "REPORT","SRE Scores","Public Objects\Reports\Advanced Workspace Datasets\Patient Advanced Workspace Data Sets\Scores", "OPA Access - Clinical Only Offering","");
+
+EXECUTE PROCEDURE removeACL ("Performance Analytics", "Folder","Financial Risk Analytics Data Sets","Public Objects\Reports\Advanced Workspace Datasets\Patient Advanced Workspace Data Sets", "OPA Access - Clinical Only Offering","PROPAGATE OVERWRITE RECURSIVELY");
+
+EXECUTE PROCEDURE removeACL ("Performance Analytics", "HIERARCHY","Eligibility","Schema Objects\Hierarchies\Data Explorer", "OPA Access - Clinical Only Offering","");</DESCRIPTION>
+<CODE>String sQuery =  "LIST ALL PROPERTIES FOR ACL FROM " +objectType+  " \""+objectName+"\"  IN FOLDER  \""+folderPath+"\"  FOR PROJECT \""+projectName+"\";";&#13;
+printOut(sQuery);&#13;
+ResultSet listOfAcls  = executeCapture(sQuery);&#13;
+&#13;
+listOfAcls.moveFirst();&#13;
+boolean foundexistingACL = false;&#13;
+boolean isFolder = false;&#13;
+boolean isPropagate = false;&#13;
+String propagateText ="";&#13;
+boolean isAclModified = false; &#13;
+List&lt;String&gt; groupNamesList = Arrays.asList(groupNamesInput.split("\\s*,\\s*"));&#13;
+ArrayList&lt;String&gt; allGroupsList = new ArrayList&lt;String&gt;();&#13;
+if(objectType.toLowerCase().equals("folder")) isFolder = true;&#13;
+&#13;
+if(propagate.toUpperCase().equals("PROPAGATE OVERWRITE RECURSIVELY") &#13;
+   || propagate.toUpperCase().equals("PROPAGATE RECURSIVELY") &#13;
+   || propagate.toUpperCase().equals("PROPAGATE OVERWRITE")){&#13;
+       propagateText = propagate.toUpperCase();&#13;
+       isPropagate = true;&#13;
+}&#13;
+&#13;
+while(!listOfAcls.isEof())&#13;
+{    &#13;
+        	String trusteeName = listOfAcls.getFieldValueString(TRUSTEE_NAME);&#13;
+      	String accessRightsAvailable = listOfAcls.getFieldValueString(ACCESS_RIGHTS);&#13;
+   	if (groupNamesList.contains(trusteeName))&#13;
+	{&#13;
+        		allGroupsList.add(trusteeName);&#13;
+     		foundexistingACL = true; &#13;
+      	}&#13;
+	listOfAcls.moveNext();&#13;
+} &#13;
+if(foundexistingACL)&#13;
+{&#13;
+             for (String group:allGroupsList )&#13;
+             { &#13;
+	if(!isFolder){&#13;
+            	    sQuery = "REMOVE ACE FROM " +objectType+  " \""+objectName+"\" IN FOLDER   \""+folderPath+"\" GROUP  \""+group+"\" FOR PROJECT \""+projectName+"\";";&#13;
+                       	    execute(sQuery);  &#13;
+	}&#13;
+	if(isFolder &amp;&amp;  isPropagate)&#13;
+            	{&#13;
+	&#13;
+            	     sQuery = " EXECUTE PROCEDURE  recursiveAclFix  ( \""+projectName+"\", \""+objectName+"\", \""+folderPath+"\",  \""+group+"\");";	&#13;
+	     printOut(sQuery); &#13;
+	     execute(sQuery);		&#13;
+ 	&#13;
+             	}&#13;
+	&#13;
+  &#13;
+             }&#13;
+            &#13;
+&#13;
+}&#13;
+&#13;
+ &#13;
+ </CODE>
+<SAMPLE/>
+<VERSION>1.0</VERSION>
+<TYPE>CUSTOM</TYPE>
+<INPUT_PARAMS>
+<INPUT INPUT_TYPE="STRING">projectName</INPUT>
+<INPUT INPUT_TYPE="STRING">objectType</INPUT>
+<INPUT INPUT_TYPE="STRING">objectName</INPUT>
+<INPUT INPUT_TYPE="STRING">folderPath</INPUT>
+<INPUT INPUT_TYPE="STRING">groupNamesInput</INPUT>
+<INPUT INPUT_TYPE="STRING">propagate</INPUT>
+</INPUT_PARAMS>
+<CLASSPATH/>
+<TEST_INPUT>
+<TEST_INPUT_PARAM>Performance Analytics - 20181219</TEST_INPUT_PARAM>
+<TEST_INPUT_PARAM>FOLDER</TEST_INPUT_PARAM>
+<TEST_INPUT_PARAM>AutoStyles</TEST_INPUT_PARAM>
+<TEST_INPUT_PARAM>Public Objects</TEST_INPUT_PARAM>
+<TEST_INPUT_PARAM>OPA User Role - Executive</TEST_INPUT_PARAM>
+<TEST_INPUT_PARAM/>
+</TEST_INPUT>
+<TEST_CONNECTION_INFO>
+<TEST_PSN_NAME>02 DEV (som-opa-d01)</TEST_PSN_NAME>
+<TEST_USERNAME>scheruku</TEST_USERNAME>
+<TEST_PASSWORD>0000000039de50b53b6e5d27df7d78bf04cb65af0fc6bc84009ee818f88949cc24c5e5df07a934cde4d07545e023fec6</TEST_PASSWORD>
+</TEST_CONNECTION_INFO>
+</PROCEDURE_DEFINITION>

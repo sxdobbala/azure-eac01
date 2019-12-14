@@ -1,0 +1,1 @@
+# Instance of redshift, plus an security group for egress to be assigned to server that need to access.  Also, ssm parameters to locate database, username, password

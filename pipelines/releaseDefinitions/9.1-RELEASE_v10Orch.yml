@@ -1,0 +1,7 @@
+webVersion: 9.1.1
+etlVersion: 9.1.1
+rwSchemaVersion: 9.1.1
+mstrContent: release-9.1
+webDeploymentVersion: 10.0.2
+isSnapshot: false
+releaseName: release-9.1_v10.0infra

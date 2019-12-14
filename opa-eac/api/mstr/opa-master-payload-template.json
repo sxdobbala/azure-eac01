@@ -1,0 +1,12 @@
+{
+  "httpMethod": "PUT",
+  "queryStringParameters": {},
+  "body": {
+    "clientId": "",
+    "data": {
+      "mstr/guid_client_group": "",
+      "mstr/guid_registry_folder": "",
+      "cube_builder/password_key": ""
+    }
+  }
+}

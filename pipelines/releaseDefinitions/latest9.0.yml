@@ -1,0 +1,6 @@
+webVersion: 9.0.2
+etlVersion: 9.0.2
+mstrContent: release-9.0
+mstrInfraVersion: release-v9.0
+isSnapshot: false
+releaseName: release-9.0_v1

@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tomcat-users>
+  <role rolename="admin" />
+  <role rolename="manager-script" />
+  <role rolename="cloud" />
+  <role rolename="mstrWebAdmin" />
+  <user username="mstr" password="{{ ssm_params.MSTR_PASSWORD }}" roles="admin,manager-script,cloud,mstrWebAdmin" />
+</tomcat-users>

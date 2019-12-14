@@ -1,0 +1,13 @@
+# opa-prod-mstr-enterprise-5
+# BayCare
+web:
+  okta-sso_settings:
+    com.optum.mstrweb.sso.okta.clientid: "0oabv707b5x3n2mld1t7"
+
+  client_users_group_guid_to_users_folder_lookup:
+    1314D14211E9E12500000080EF852FB2: 
+      ClientUsersFolderName: "BayCare Users"
+
+  custom_alert_message:
+    StartDateTime: "12/18/2018 17:00:00"
+    EndDateTime: "12/31/2018 20:00:00"

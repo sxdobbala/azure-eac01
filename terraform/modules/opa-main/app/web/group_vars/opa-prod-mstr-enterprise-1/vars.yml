@@ -1,0 +1,21 @@
+# opa-prod-mstr-enterprise-1
+web:
+  okta-sso_settings:
+    com.optum.mstrweb.sso.okta.clientid: "0oaalnt5r8HDvL7QW1t7"
+    com.optum.mstrweb.sso.okta.oktadiscoveryurl: "https://onelogin.advisory.com/oauth2/aus4blhnknOySLli21t7/.well-known/openid-configuration"
+    com.optum.mstrweb.sso.okta.configparam.idp: "0oac7jmsamWYNdzbK1t7"
+
+  okta_esm_settings:
+    com.optum.mstrweb.sso.okta.esm.jdbc.url: "jdbc:redshift://opa-prod-redshift-1-redshift-cluster.cyf2jhkfukab.us-east-1.redshift.amazonaws.com:5439/h592196"
+
+  client_reference:
+    0BEC4B3C11E886CE01AF0080EFF57A32:
+      favicon: "Blue_favicon.ico"
+      logo: "Blue_logo.png"
+      stylesheet: "BlueStylesheet.css"
+      login_url: "https://login.performanceanalytics.optum.com/bcnc/signin"
+      console_url: "https://console.performanceanalytics.optum.com/bcnc/your-products"
+
+  custom_alert_message:
+    StartDateTime: "12/18/2018 17:00:00"
+    EndDateTime: "12/31/2018 20:00:00"

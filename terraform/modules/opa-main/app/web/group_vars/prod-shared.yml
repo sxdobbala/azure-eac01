@@ -1,0 +1,45 @@
+aws_account_id: "029620356096"
+web:
+  has_advanced_mstr_logging: True
+  okta-sso_settings:
+    com.optum.mstrweb.sso.okta.oktadiscoveryurl: "https://advisory-members.okta.com/oauth2/aus4blhnknOySLli21t7/.well-known/openid-configuration"
+    com.optum.mstrweb.sso.okta.oktalogouturl: "https://advisory-members.okta.com/login/signout"
+    com.optum.mstrweb.sso.okta.configparam.idp: "0oa7tro4mlGtp9jO91t7"
+  okta_esm_settings:
+    com.optum.mstrweb.sso.okta.esm.onelogin.api.baseurl: "https://onelogin.advisory.com/api/"
+    com.optum.mstrweb.sso.okta.esm.loginurl: "https://login.performanceanalytics.optum.com"
+    com.optum.mstrweb.sso.okta.esm.opa.siamapplnkey: "a5c9e82e-6a00-44d0-afb4-6100889f6fe1"
+    # EM
+    com.optum.mstrweb.sso.okta.esm.em.siamapplnkey: "1b29b55d-8e70-4fbd-a68f-512657f8f7d1"
+  
+  client_users_group_guid_to_users_folder_lookup:
+    943D6D1711E8EFF300000080EF451730:
+      ClientUsersFolderName: "Keck Users"
+    50FF5EA6406BACE0D95AD7A3FFF508DB:
+      ClientUsersFolderName: "Mock Users"
+    133AC8E748BB64E4A2F16794F604E656: 
+      ClientUsersFolderName: "NYU Users"
+    6366A61446F9662C83E0DFA24D08E8FC: 
+      ClientUsersFolderName: "Populytics Users"
+    0BEC4B3C11E886CE01AF0080EFF57A32: 
+      ClientUsersFolderName: "Blue Cross NC Users"
+    720132BC4A192165D4CBC380D7A797B9: 
+      ClientUsersFolderName: "Demo Users"
+    2B9F4060422FEB1415AF3F8A876D84DA: 
+      ClientUsersFolderName: "Training Users"
+    D601A18811E8DDEAB7BA0080EF15F18A:
+      ClientUsersFolderName: "DIDG64 Users"
+    F5969B5A11E8BD9E018E0080EFA50537:
+      ClientUsersFolderName: "Benevera Users"
+    07B9D34011E94A5A099F0080EF550249:
+      ClientUsersFolderName: "Ascension Users"
+    C68133B211E9612600000080EF85768E:
+      ClientUsersFolderName: "Vera Users"
+    0152FEEA11E96E911EAB0080EF751F7F:
+      ClientUsersFolderName: "UnitedPhysicians Users"
+    94300BDE11E97E7400000080EFE5222A: 
+      ClientUsersFolderName: "Mercy Users"
+
+  client_reference:
+    default:
+      console_url: "https://console.performanceanalytics.optum.com/Console/your-products"

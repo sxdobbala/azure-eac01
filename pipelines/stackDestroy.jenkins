@@ -1,0 +1,195 @@
+#!/usr/bin/env groovy
+
+@Library(["com.optum.opa.jenkins"]) _
+import com.optum.jenkins.pipeline.library.scm.Git;
+import com.optum.opa.jenkins.FormatString;
+import com.optum.opa.jenkins.Utils;
+import groovy.transform.Field
+
+@Field
+String stepFunctionUrl = ''
+
+@Field
+String executionName = ''
+
+pipeline {
+    options
+    {
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '2'))
+    }
+    environment {
+        PYTHON_VERSION = "3.6"
+        AWS_REGION = "us-east-1"
+        FLOW_NAME='opa-all'
+        FLOWDOCK_TOKEN = 'FLOWDOCK_API_TOKEN'
+        NONPROD_ACCOUNT = '760182235631'
+        PROD_ACCOUNT = '029620356096'
+        S3_ARTIFACT_BUCKET = "${NONPROD_ACCOUNT}-opa-artifacts-opa"
+        NONPROD_AWS_CREDENTIAL_ID = "AWS_OPA_NONPROD_SERVICE_ACCOUNT"
+        PROD_AWS_CREDENTIAL_ID = "AWS_OPA_PROD_SERVICE_ACCOUNT"
+    }
+
+    parameters
+    {
+        string(
+            name: 'env_id',
+            defaultValue: '',
+            description: 'MicroStrategy environment (e.g. env-139377)'
+        )
+
+        choice(
+            name: 'buildEnvironment',
+            choices: ['dev', 'qa', 'stage', 'prod', 'ci', 'dev-nina', 'dev-momchil', 'dev-dusan', 'dev-nihanshu', 'dev-bogdan'],
+            description: 'Build environment'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'waitForStepFunctionToComplete',
+          description: 'Whether Jenkins job should wait for the release step function to complete'
+          )
+    }
+    agent
+    {
+        node {
+            label 'docker-maven-slave'
+        }
+    }
+    stages
+    {
+        stage('Validate Parameters')
+        {
+          steps{
+            script {
+              env.ENV_ID = params.env_id
+
+              if (!env.ENV_ID)
+              {
+                error(FormatString.failure("env_id is required"))
+              }
+              try {
+                sh '. /etc/profile.d/jenkins.sh'
+                def userCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                env.JOB_RUNNER = userCause.userId?.find { true }
+                print.header("Destroy environment ${env.ENV_ID} by ${env.JOB_RUNNER}")
+              }
+              catch (err)
+              {
+                print.warn "Unknown BUILD_USER_ID. Error: ${err.getMessage()}"
+                env.JOB_RUNNER = 'Unknown'
+              }
+            }
+          }
+        }
+        stage('Authenticate to AWS')
+        {
+          steps
+            {
+              script {
+                boolean is_prod = params.buildEnvironment in ["stage", "prod"]
+                def account = is_prod ? env.PROD_ACCOUNT : env.NONPROD_ACCOUNT;
+                def stateMachineName = 'mstr-environment-destroy-sfn'
+                env.AWS_ROLE = "arn:aws:iam::${account}:role/AWS_${account}_Service"
+                env.STATE_MACHINE_ARN = "arn:aws:states:${env.AWS_REGION}:${account}:stateMachine:${params.buildEnvironment}-${stateMachineName}"
+                env.AWS_CREDENTIAL_ID = is_prod ? PROD_AWS_CREDENTIAL_ID : NONPROD_AWS_CREDENTIAL_ID;
+
+                echo "Using AWS Role ${env.AWS_ROLE}"
+                echo "Using AWS Credential ID ${env.AWS_CREDENTIAL_ID}"
+
+                glAmazonGetTemporaryCredentials credentialsId: "${env.AWS_CREDENTIAL_ID}", roleARN: "${env.AWS_ROLE}", awsRegion: "${AWS_REGION}"
+                env.AWS_PROFILE = 'saml'
+              }
+            }
+        }
+        stage('Disable termination protection')
+        {
+          steps {
+            sh "aws cloudformation update-termination-protection --stack-name ${env.ENV_ID} --no-enable-termination-protection"
+          }
+        }
+        stage('AWS Step Function')
+        {
+          when {
+            allOf{
+              expression { env.ENV_ID }
+            }
+          }
+          steps{
+            script{
+              // Assembly payload as a Map (it will be auto-serialized to Json)
+              env.LOCAL_BRANCH = env.GIT_BRANCH.substring(7) //trim origin/ from branch name
+              def payload = [ envId : env.ENV_ID.toString() ]
+
+              // executionName is limited to 80 characters by AWS, hence we are truncating some of the inputs
+              executionName = "DESTROY_${params.buildEnvironment}_${env.ENV_ID}_${env.LOCAL_BRANCH.take(25)}_${env.BUILD_NUMBER}"
+              executionName = executionName.replaceAll("[^a-zA-Z0-9_.-]+","")
+
+              echo "Executing the step function"
+              echo "Using State Machine ID ${env.STATE_MACHINE_ARN}"
+              env.EXECUTION_ARN = glAmazonExecuteStepFunction env.STATE_MACHINE_ARN, payload, executionName
+              stepFunctionUrl = "https://console.aws.amazon.com/states/home?region=${env.AWS_REGION}#/executions/details/" + env.EXECUTION_ARN
+              echo "StepFunctionURL: ${stepFunctionUrl}"
+
+              glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                credentialsType: "user",
+                flow: "${env.FLOW_NAME}",
+                message: ":jenkins: Step function ${executionName} deployment started. Step function URL: ${stepFunctionUrl}"
+
+              // This runs some shared stages from the opa-jenkins-lib to:
+              // authenticate to AWS, execute the step function, and optionally
+              // wait for the step function to complete
+              /*
+              opaStepFunctionPipelineStages buildEnvironment: params.buildEnvironment,
+               nodeName: 'master',
+               stateMachineName: 'mstr-environment-destroy-sfn',
+               stepFunctionInput: payload,
+               executionName: executionName,
+               waitForStepFunctionToComplete: params.waitForStepFunctionToComplete
+               */
+            }
+          }
+        }
+        stage("Wait for Step Function")
+        {
+          when {
+            expression { params.waitForStepFunctionToComplete }
+          }
+          steps{
+            script {
+            def status = glAmazonWaitForStepFunction executionARN: "${env.EXECUTION_ARN}"
+            echo "Step function status: [${status}]"
+
+            if (status == "SUCCEEDED") {
+              glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                credentialsType: "user",
+                flow: "${env.FLOW_NAME}",
+                message: ":jenkins-hero: Step Function execution ${executionName} succeeded. Step function URL: ${stepFunctionUrl}"
+            } else {
+              glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                credentialsType: "user",
+                flow: "${env.FLOW_NAME}",
+                message: ":jenkins-explode: Step Function execution ${executionName} failed. Step function URL: ${stepFunctionUrl}"
+              error("Step function execution ${env.EXECUTION_ARN} ${status}")
+            }
+          }
+          }
+        }
+    }
+
+    post
+    {
+        success
+        {
+            script {
+              print.success("Release succeeded: ${stepFunctionUrl}")
+            }
+        }
+        failure
+        {
+            script {
+                print.failure('Release Failed')
+            }
+        }
+    }
+}

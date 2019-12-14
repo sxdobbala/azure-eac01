@@ -1,0 +1,388 @@
+#!/usr/bin/env groovy
+
+@Library(["com.optum.opa.jenkins"]) _
+import com.optum.jenkins.pipeline.library.scm.Git;
+import com.optum.opa.jenkins.FormatString;
+import groovy.transform.Field
+
+@Field
+def releaseParameters = [:]
+
+@Field
+def contentReleases = []
+
+@Field
+def releaseFileCounts = [:]
+
+pipeline {
+    options
+    {
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '2'))
+    }
+    environment {
+        PYTHON_VERSION = "3.6"
+        MAVEN_VERSION='3.5.4'
+        MAVEN_REPO='https://repo1.uhc.com/artifactory/maven-repo'
+        AWS_REGION = "us-east-1"
+        FLOW_NAME='opa-all'
+        FLOWDOCK_TOKEN = 'FLOWDOCK_API_TOKEN'
+        NONPROD_ACCOUNT = '760182235631'
+        PROD_ACCOUNT = '029620356096'
+        S3_ARTIFACT_BUCKET = "${NONPROD_ACCOUNT}-opa-artifacts-opa"
+        NONPROD_AWS_CREDENTIAL_ID = "AWS_OPA_NONPROD_SERVICE_ACCOUNT"
+        PROD_AWS_CREDENTIAL_ID = "AWS_OPA_PROD_SERVICE_ACCOUNT"
+        CONTENT_COMBINED_RELEASE = "combinedRelease"
+    }
+
+    parameters
+    {
+        booleanParam(
+            defaultValue: true,
+            name: 'newReleasePackage',
+            description: 'Create a new e2e release package or use an existing one'
+        )
+
+        booleanParam(
+          defaultValue: false,
+          name: 'useReleaseDefinitionFile',
+          description: 'Supply input release versions from a definition file instead of individually'
+        )
+
+        string(
+          defaultValue: '',
+          name: 'releaseDefinitionFile',
+          description: 'If useReleaseDefinitionFile is checked, and this value is empty, then job will prompt with options in Stage 2'
+          )
+
+        string(
+            name: 'e2eReleaseS3DirName',
+            defaultValue: '',
+            description: 'Bundled artifacts will be/is available on S3 with this name. Naming pattern: username-releaseVersion-date(mmddyy)-fileversion example: npurohit-8.5-081919-1. If using an existing package, IGNORE the following parameters, go ahead and build'
+        )
+
+        string(
+            name: 'webReleaseVersion',
+            defaultValue: '',
+            description: 'oap-mstr-web Release Version Number example: 8.5 or 8.5-SNAPSHOT'
+        )
+
+        string(
+            name: 'webDeploymentReleaseVersion',
+            defaultValue: '',
+            description: 'oap-mstr-web-deployment Release Version Number example: 8.5 or 8.5-SNAPSHOT'
+        )
+
+        string(
+            name: 'rwSchemaVersion',
+            defaultValue: '',
+            description: 'schema.read_write Release Version Number example: 8.5-SNAPSHOT'
+        )
+        string(
+            name: 'etlReleaseVersion',
+            defaultValue: '',
+            description: 'opa_etl Release Version Number example: 8.5-SNAPSHOT'
+        )
+
+        string(
+            name: 'mstrContentReleaseVersions',
+            defaultValue: '',
+            description: 'opa-mstr-content Array of releases to copy. Example: [release-8.5,release-9.0]'
+        )
+    }
+    agent
+    {
+        node {
+            label 'docker-maven-slave'
+        }
+    }
+    stages
+    {
+        stage('Gather Input')
+        {
+          when{
+            beforeInput true
+            allOf {
+              expression { params.useReleaseDefinitionFile }
+            }
+          }
+          steps {
+            script {
+              def definitionsPath = 'pipelines/releaseDefinitions'
+              def releaseDefinitionFile = params.releaseDefinitionFile;
+
+              // If not already provided, give the user the option to select one from a list
+              if (!releaseDefinitionFile) {
+                releaseDefinitionFile = input id: 'Get Release File', message: 'Specify the input versions for the release',
+                    parameters: [
+                      [$class:'FileSystemListParameterDefinition',
+                      name: 'release definition file',
+                      nodeName: "${env.NODE_NAME}",
+                      path: "${env.WORKSPACE}/${definitionsPath}",
+                      regexIncludePattern: "",
+                      regexExcludePattern: "",
+                      selectedType: 'FILE'
+                    ]]
+
+                echo "File chosen: ${releaseDefinitionFile}"
+              }
+
+              dir(path: "${definitionsPath}")
+              {
+                def releaseDefinitionRaw = readFile file: "${releaseDefinitionFile}"
+                // Do not declare as def so that releaseParameters will be accessible elsewhere
+                releaseParameters = opaParseYamlString releaseDefinitionRaw
+
+                env.WEB_RELEASE = releaseParameters.webVersion
+                env.WEB_DEPLOYMENT_RELEASE = releaseParameters.webDeploymentVersion
+                env.ETL_RELEASE = releaseParameters.etlVersion
+                env.RW_RELEASE = releaseParameters.rwSchemaVersion
+                contentReleases = [] + releaseParameters.mstrContent
+                if (releaseParameters.releaseName){
+                  env.RELEASE_NAME = releaseParameters.releaseName
+                }
+                else
+                {
+                  def name = releaseDefinitionFile.take(releaseDefinitionFile.lastIndexOf('.'))
+                  env.RELEASE_NAME = name
+                }
+                env.IS_SNAPSHOT = releaseParameters.isSnapshot
+              }
+            }
+          }
+        }
+        stage('Resolve Input')
+        {
+          steps{
+            //allow individually specified parameters to override ones from release definition file
+            script{
+              try {
+                sh '. /etc/profile.d/jenkins.sh'
+                def userCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                env.JOB_RUNNER = userCause.userId?.find { true }
+                echo "Job runner: ${env.JOB_RUNNER}"
+              }
+              catch (err)
+              {
+                print.warn "Unknown BUILD_USER_ID. Error: ${err.getMessage()}"
+                env.JOB_RUNNER = 'Unknown'
+              }
+              if (params.webReleaseVersion)
+              {
+                env.WEB_RELEASE = params.webReleaseVersion
+              }
+              if (params.webDeploymentReleaseVersion)
+              {
+                env.WEB_DEPLOYMENT_RELEASE = params.webDeploymentReleaseVersion
+              }
+              if (params.etlReleaseVersion)
+              {
+                env.ETL_RELEASE = params.etlReleaseVersion
+              }
+              if (params.rwSchemaVersion)
+              {
+                env.RW_RELEASE = params.rwSchemaVersion
+              }
+              if (params.mstrContentReleaseVersion)
+              {
+                contentReleases = [] + Eval.me(params.mstrContentReleaseVersions)
+              }
+              if (params.e2eReleaseS3DirName)
+              {
+                env.RELEASE_NAME = params.e2eReleaseS3DirName
+              }
+              if (env.RELEASE_NAME)
+              {
+                env.RELEASE_NAME = FormatString.replaceTimestampPlaceholder(env.RELEASE_NAME)
+              }
+              echo "Resolved ReleaseName: ${env.RELEASE_NAME}"
+
+              boolean is_prod = params.buildEnvironment in ["stage", "prod"]
+              def account = is_prod ? PROD_ACCOUNT : NONPROD_ACCOUNT;
+              env.AWS_ROLE = "arn:aws:iam::${account}:role/AWS_${account}_Service"
+              env.STATE_MACHINE_ARN = "arn:aws:states:us-east-1:${account}:stateMachine:${params.buildEnvironment}-e2e-release-state-machine"
+              env.AWS_CREDENTIAL_ID = is_prod ? PRODAWS_CREDENTIAL_ID : NONPROD_AWS_CREDENTIAL_ID;
+              env.CONTENT_BUCKET_PREFIX = "opa-releases/mstr-content"
+              sh 'printenv | sort'
+            }
+          }
+        }
+        stage('Configure AWS')
+        {
+            steps
+            {
+                script {
+                    boolean is_prod = params.buildEnvironment in ["stage", "prod"]
+                    echo "Using AWS Role ${env.AWS_ROLE}"
+                    echo "Using AWS Credential ID ${env.AWS_CREDENTIAL_ID}"
+
+                    //deployApprovers = "jhancoc4,tvetheka,mgeorgie,${getRepoOwnerName()}" // Only the following MSIDs can approve deployment
+                    glAmazonGetTemporaryCredentials credentialsId: "${env.AWS_CREDENTIAL_ID}", roleARN: "${env.AWS_ROLE}", awsRegion: "${AWS_REGION}"
+                    env.AWS_PROFILE = 'saml'
+                }
+            }
+        }
+        stage('Validate Parameters'){
+            steps
+            {
+                script{
+                    if (!env.RELEASE_NAME){
+                        error('Release Name is empty. Must be supplied by release definition file or e2eReleaseS3DirName parameter')
+                    }
+                    def newPackage = params.newReleasePackage
+                    if (newPackage){
+                        echo "Creating a new release package ${env.RELEASE_NAME} in e2e-release folder of s3's opa-artifacts bucket."
+                        sh """
+                            mkdir e2e-release-artifacts
+                        """
+                    } else {
+                        echo "Using an existing package ${env.RELEASE_NAME} located in e2e-Release folder in S3 opa artifacts bucket"
+                    }
+                }
+            }
+        }
+        stage('Fetch & Push artifacts to s3'){
+            when {
+              allOf{
+                expression { return params.newReleasePackage }
+                expression { env.RELEASE_NAME }
+              }
+            }
+            stages
+            {
+                stage('Fetch oap-mstr-web'){
+                    when {
+                        expression { env.WEB_RELEASE }
+                    }
+                    steps {
+                        echo "Fetching oap-mstr-web"
+                        opaFetchMavenArtifact artifactId: 'oap-mstr-web',
+                           artifactVersion: "${env.WEB_RELEASE}",
+                           artifactType: 'war',
+                           destination: 'e2e-release-artifacts/oap-mstr-web.war'
+                    }
+                }
+                stage('Fetch oap-mstr-web-deployment'){
+                    when {
+                        expression { env.WEB_DEPLOYMENT_RELEASE }
+                    }
+                    steps {
+                        echo "Fetching oap-mstr-web-deployment"
+                        opaFetchMavenArtifact artifactId: 'oap-mstr-web-deployment',
+                           artifactVersion: "${env.WEB_DEPLOYMENT_RELEASE}",
+                           artifactType: 'zip',
+                           destination: 'e2e-release-artifacts/oap-mstr-web-deployment.zip'
+                    }
+                }
+                stage('Fetch opa-etl'){
+                    when {
+                        expression { env.ETL_RELEASE }
+                    }
+                    steps{
+                      opaFetchMavenArtifact artifactId: 'opa_etls',
+                         artifactVersion: "${env.ETL_RELEASE}",
+                         destination: 'e2e-release-artifacts/opa_etls.jar'
+
+                     opaFetchMavenArtifact artifactId: 'opa-rep-loaders',
+                        artifactVersion: "${env.ETL_RELEASE}",
+                        artifactType: 'zip',
+                        destination: 'e2e-release-artifacts/opa-rep-loaders.zip'
+
+                     opaFetchMavenArtifact artifactId: 'schema.read_write',
+                        artifactVersion: "${env.RW_RELEASE}",
+                        artifactType: 'jar',
+                        destination: 'e2e-release-artifacts/schema.read_write.jar'
+
+                    }
+                }
+                //NOTE: Using s3 cp instead of sync because sync only copies new/modified files.
+                //Assuming there's always a new destination directory but the same source directory, cp is recommended.
+                //We can change it to sync, if we ever decide to overwrite release directories instead of creating a new one every time (to optimize).
+                //NOTE: We can do the same for other artifacts, in future, if they are already being uploaded to s3.
+                stage('Copy opa-mstr-content artifacts'){
+                    when {
+                        expression { contentReleases }
+                    }
+                    steps{
+                        script{
+
+                          print.header "Syncing opa mstr content artifacts"
+                          env.S3DESTINATION = "s3://${S3_ARTIFACT_BUCKET}/e2e-releases/${env.RELEASE_NAME}"
+
+                          // We can support multiple folders when building a release, but we are currently
+                          // limited to deploying a single release in the deployment pipeline
+                          contentReleases.each { release ->
+                            sh """
+                              aws s3 cp s3://${S3_ARTIFACT_BUCKET}/${env.CONTENT_BUCKET_PREFIX}/${release} ${env.S3DESTINATION}/mstr-content/${release} --recursive
+                            """
+                            def count = sh (returnStdout: true, script: """
+                            aws s3api list-objects --bucket ${S3_ARTIFACT_BUCKET} --prefix ${env.CONTENT_BUCKET_PREFIX}/${release}/mstr/ --query "length(Contents[])"
+                            """
+                            ).trim() as Integer
+                            releaseFileCounts["${release}"] = count
+                          }
+                        }
+                    }
+                }
+                stage('Save release parameters')
+                {
+                  steps {
+                    script {
+                      print.header 'Writing release definition file...'
+                      def releaseFilename = 'e2e-release-artifacts/releaseDefinition.yml'
+
+                      String yamlContents = opaToYaml webVersion: env.WEB_RELEASE,
+                        webDeploymentVersion: env.WEB_DEPLOYMENT_RELEASE,
+                        etlVersion: env.ETL_RELEASE,
+                        mstrContent: contentReleases,
+                        mstrContentCount: releaseFileCounts,
+                        isSnapshot: env.IS_SNAPSHOT,
+                        releaseAuthor: env.JOB_RUNNER,
+                        buildTag: env.BUILD_TAG,
+                        buildUrl: env.BUILD_URL
+
+                      echo yamlContents
+                      writeFile file: releaseFilename, text: yamlContents
+                    }
+                  }
+                }
+                stage('Push mvn artifacts to S3'){
+                    steps{
+                        script{
+                            echo "fetching opa mstr content artifacts"
+                            sh """
+                                ls -al e2e-release-artifacts
+                                aws s3 sync e2e-release-artifacts s3://${S3_ARTIFACT_BUCKET}/e2e-releases/${env.RELEASE_NAME}
+                            """
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post
+    {
+        success
+        {
+            script {
+                print.success("Release Created at ${env.S3DESTINATION}");
+                if (env.IS_SNAPSHOT == 'false')
+                {
+                    glFlowdockSay credentialsId: "${env.FLOWDOCK_TOKEN}",
+                      credentialsType: "user",
+                      flow: "${env.FLOW_NAME}",
+                      message: ":jenkins-hero: Release ${env.RELEASE_NAME} created at ${env.S3DESTINATION}"
+                }
+            }
+
+        }
+        failure
+        {
+            script {
+                print.failure('Release Failed')
+            }
+        }
+    }
+}

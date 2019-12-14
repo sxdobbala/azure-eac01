@@ -1,0 +1,126 @@
+{
+    "Comment": "Workflow for creating a MSTR stack",
+    "StartAt": "Version Specified?",
+    "States": {
+        "Version Specified?": {
+            "Comment": "See if specific mstrVersion is passed in explicitly",
+            "Type": "Choice",
+            "Default": "Create Stack",
+            "Choices": [
+                {
+                    "Variable": "$.mstrVersion",
+                    "StringEquals": "",
+                    "Next": "Set Default MSTR Version"
+                }
+            ]
+        },
+        "Set Default MSTR Version": {
+            "Comment": "Set MSTR version from static value from Terraform variables",
+            "Type": "Pass",
+            "Result": "${MSTR_VERSION}",
+            "ResultPath": "$.mstrVersion",
+            "Next": "Create Stack"
+        },
+        "Create Stack": {
+            "Comment": "Call the MSTR API to create the stack",
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${MSTR_ENVIRONMENT_LAMBDA_ARN}",
+                "Payload": {
+                    "httpMethod": "POST",
+                    "body": {
+                        "mstrConfig": {
+                            "environmentName.$": "$.environmentName",
+                            "environmentType.$": "$.environmentType",
+                            "region": "${AWS_REGION}",
+                            "microStrategyVersion.$": "$.mstrVersion",
+                            "contactInformation": {
+                                "firstName": "OPA",
+                                "lastName": "Admins",
+                                "email": "${MSTR_EMAIL}",
+                                "company": "Optum"
+                            },
+                            "instanceInformation": {
+                                "developerInstanceType": "",
+                                "platformInstanceType.$": "$.platformInstanceType",
+                                "platformOS": "Amazon Linux",
+                                "rdsInstanceType.$": "$.rdsInstanceType",
+                                "rdsSize": "5"
+                            },
+                            "awsAccount": "${AWS_ACCOUNT_ID}",
+                            "mstrBakS3BucketLocation.$": "$.mstrBakS3BucketLocation",
+                            "enterpriseApplication": "Tutorial"
+                        }
+                    }
+                }
+            },
+            "ResultPath": "$.results.createStack",
+            "OutputPath": "$",
+            "Next": "Create Complete?",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Workflow Failed"
+                }
+            ]
+        },
+        "Create Complete?": {
+            "Comment": "Keep polling for status of MSTR stack until ready or there is a timeout",
+            "Type": "Task",
+            "Resource": "${MSTR_STACK_STATUS_LAMBDA_ARN}",
+            "InputPath": "$.results.createStack.Payload",
+            "OutputPath": "$",
+            "ResultPath": "$.results.stackStatus",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "StackNotReadyError"
+                    ],
+                    "IntervalSeconds": 300,
+                    "MaxAttempts": 24,
+                    "BackoffRate": 1
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Workflow Failed"
+                }
+            ],
+            "Next": "Cleanup MSTR ELB"
+        },
+        "Cleanup MSTR ELB": {
+            "Comment": "Remove the ELB that MSTR stack creates since we're not using it",
+            "Type": "Task",
+            "Resource": "${MSTR_ELB_CLEANUP_LAMBDA_ARN}",
+            "InputPath": "$.results.createStack.Payload",
+            "OutputPath": "$",
+            "ResultPath": null,
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Workflow Failed"
+                }
+            ],
+            "Next": "Workflow Succeeded"
+        },
+        "Workflow Failed": {
+            "Type": "Fail",
+            "Cause": "Workflow failed",
+            "Error": "See execution logs"
+        },
+        "Workflow Succeeded": {
+            "Type": "Pass",
+            "InputPath": "$",
+            "OutputPath": "$.results.createStack.Payload",
+            "End": true
+        }
+    }
+}
