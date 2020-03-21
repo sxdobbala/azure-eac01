@@ -1,9 +1,0 @@
-boto3
-pexpect
-mstrio-py==10.11.1
-requests
-pymysql
-pytest-shutil
-configparser
-psycopg2-binary
-pyyaml

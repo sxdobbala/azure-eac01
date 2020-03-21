@@ -1,2 +1,0 @@
-find ./  -type f \( -name "*.tf" -and -not -path  "*/.terraform/*" \) -print -exec terraform fmt {} \;
-find ./  -type f \( -name "*.py" -and -not -path  "*/.terraform/*" -and -not -path  "*/venv/*" \) -print -exec python3 -m black {} \;

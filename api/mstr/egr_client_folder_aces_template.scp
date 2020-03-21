@@ -1,8 +1,0 @@
-EXECUTE PROCEDURE removeACL("<mstr_project_name>", "Folder", "<client_employer_groups_reports>", "<path>", "Everyone", "PROPAGATE RECURSIVELY");
-
-EXECUTE PROCEDURE addACL("<mstr_project_name>", "Folder", "<client_employer_groups_reports>", "<path>", "OPA User Role - Client Administrator", "CUSTOM GRANT WRITE, DELETE", "CUSTOM GRANT WRITE, DELETE", "PROPAGATE RECURSIVELY");
-EXECUTE PROCEDURE addACL("<mstr_project_name>", "Folder", "<client_employer_groups_reports>", "<path>", "<client_id>", "VIEW", "VIEW", "PROPAGATE RECURSIVELY");
-EXECUTE PROCEDURE addACL("<mstr_project_name>", "Folder", "<client_employer_groups_reports>", "<path>", "System Administrators", "FULLCONTROL", "FULLCONTROL", "PROPAGATE RECURSIVELY");
-EXECUTE PROCEDURE addACL("<mstr_project_name>", "Folder", "<client_employer_groups_reports>", "<path>", "22_MicroStrategy Architect", "FULLCONTROL", "FULLCONTROL", "PROPAGATE RECURSIVELY");
-EXECUTE PROCEDURE addACL("<mstr_project_name>", "Folder", "<client_employer_groups_reports>", "<path>", "23_MicroStrategy Web Professional", "MODIFY", "MODIFY", "PROPAGATE RECURSIVELY");
-EXECUTE PROCEDURE addACL("<mstr_project_name>", "Folder", "<client_employer_groups_reports>", "<path>", "24_MicroStrategy Web Analyst", "VIEW", "VIEW", "PROPAGATE RECURSIVELY");

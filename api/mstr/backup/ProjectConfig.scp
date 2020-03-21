@@ -1,1 +1,0 @@
-EXECUTE PROCEDURE Save_Reuse_Project_Configuration ("Performance Analytics", "C:\ProgramData\MSTRProjectMigration\Config\projectConfiguration.scp");

@@ -1,2 +1,0 @@
-terraform_external_data==1.0.1
-boto3==1.9.114

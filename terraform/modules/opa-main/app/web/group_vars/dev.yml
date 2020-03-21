@@ -1,9 +1,0 @@
-env_prefix: 'dev'
-elb_hostname: 'devcloud.performanceanalytics.optum.com'
-web:
-  okta_esm_settings:
-    com.optum.mstrweb.sso.okta.esm.environmentkey: '48871ccc-2e86-4e8d-bfa8-901227cec118'
-  listmanager_settings:
-    jdbc.url: jdbc:redshift://opadevredshift-1-redshift-cluster.clxtymtfekvn.us-east-1.redshift.amazonaws.com:5439/opa8_deid_dev
-  listmanager_diy_settings:
-    jdbc.url: jdbc:redshift://opadevredshift-1-redshift-cluster.clxtymtfekvn.us-east-1.redshift.amazonaws.com:5439/opa8_deid_dev

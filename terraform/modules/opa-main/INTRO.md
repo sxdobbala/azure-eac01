@@ -1,1 +1,0 @@
-# Contains shared resources for OPA CodeDeploy app

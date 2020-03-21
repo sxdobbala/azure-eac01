@@ -1,5 +1,0 @@
-env_prefix: "stage"
-elb_hostname: "stagecloud.performanceanalytics.optum.com"
-web:
-  okta_esm_settings:
-    com.optum.mstrweb.sso.okta.esm.environmentkey: "6127397f-410a-4e0e-bd68-fc4ba234d6a3"

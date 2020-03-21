@@ -1,5 +1,0 @@
-env_prefix: 'prod'
-elb_hostname: 'cloud.performanceanalytics.optum.com'
-web:
-  okta_esm_settings:
-    com.optum.mstrweb.sso.okta.esm.environmentkey: '67d939bb-b3ef-4b52-bd47-a69af5351a7b'

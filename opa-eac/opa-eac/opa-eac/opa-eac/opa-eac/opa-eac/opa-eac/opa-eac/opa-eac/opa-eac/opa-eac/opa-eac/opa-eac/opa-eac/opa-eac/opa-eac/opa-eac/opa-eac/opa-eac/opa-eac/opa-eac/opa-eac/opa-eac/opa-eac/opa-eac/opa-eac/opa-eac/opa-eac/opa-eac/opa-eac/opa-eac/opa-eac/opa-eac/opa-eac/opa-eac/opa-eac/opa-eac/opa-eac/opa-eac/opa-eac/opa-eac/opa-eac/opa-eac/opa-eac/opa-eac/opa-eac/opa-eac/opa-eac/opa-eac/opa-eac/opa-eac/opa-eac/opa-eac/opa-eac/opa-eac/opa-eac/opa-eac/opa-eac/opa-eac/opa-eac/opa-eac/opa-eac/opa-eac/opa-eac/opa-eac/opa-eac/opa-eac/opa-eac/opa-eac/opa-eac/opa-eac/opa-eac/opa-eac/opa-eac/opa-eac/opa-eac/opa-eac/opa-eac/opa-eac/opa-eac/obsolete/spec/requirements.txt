@@ -1,3 +1,0 @@
-pytest
-boto3
-git+https://github.optum.com/CommercialCloud-EAC/python-scripts.git#subdirectory=terraformrunner

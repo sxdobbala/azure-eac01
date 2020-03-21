@@ -1,1 +1,0 @@
-../nonprodoptumopa/setup.sh

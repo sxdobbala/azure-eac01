@@ -1,3 +1,0 @@
-WEB-INF/log
-*.log
-WEB-INF/xml/*.token

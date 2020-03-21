@@ -1,5 +1,0 @@
-env_vars:
-  - key: AWS_S3_FLAT_FILE_EXPORT_BUCKET_NAME
-    value: ${bucket_name}
-  - key: MSTR_WEB_ENVIRONMENT
-    value: ${env_prefix}
